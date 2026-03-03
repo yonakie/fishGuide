@@ -1,7 +1,8 @@
-import { routeAgentRequest, type Schedule } from "agents"; // 从 agents 库（Cloudflare 官方封装的一个包）里导入的函数，用来把 HTTP 请求分发给具体的 Agent。这是 ES6 标准模块导入语法，相当于 Python 的 from module import specific_function。那个 type 关键字是 TypeScript 特有的。它表示 Schedule 只是一个类型定义（Type Definition），编译成 JavaScript 后这东西会消失。这告诉编译器：“我只想要这个类型检查，不需要它的运行代码。”
+import { routeAgentRequest, type Schedule } from "agents"; // 从 agents 库（Cloudflare 官方封装的一个包）里导入的函数，用来把 HTTP 请求分发给具体的 Agent。文档见https://developers.cloudflare.com/agents/api-reference/routing/，Agents are accessed via URL patterns。这是 ES6 标准模块导入语法，相当于 Python 的 from module import specific_function。那个 type 关键字是 TypeScript 特有的。它表示 Schedule 只是一个类型定义（Type Definition），编译成 JavaScript 后这东西会消失。这告诉编译器：“我只想要这个类型检查，不需要它的运行代码。”
 import { getSchedulePrompt } from "agents/schedule";
 import { AIChatAgent } from "agents/ai-chat-agent";
 // 这里导入了一个生成提示词的函数 getSchedulePrompt，以及一个基类 AIChatAgent。你的 Chat 类稍后会继承这个基类。
+// 功能包括：内置消息持久性，自动断点续传（中途重新连接），useAgentChat可与React Hook配合使用。文档：https://developers.cloudflare.com/agents/getting-started/build-a-chat-agent/
 import {
   generateId, // 导入一个生成唯一 ID 的函数
   streamText, // 核心函数，用于向大模型发送请求并获取流式响应
@@ -12,6 +13,7 @@ import {
   createUIMessageStreamResponse, // 创建一个 UI 消息流响应的函数
   type ToolSet // 这是一个类型定义，表示一组工具的集合
 } from "ai";
+// AI SDK 由 Next.js 的创建者开发，是一个免费的开源库，它为您提供构建 AI 驱动产品所需的工具。https://ai-sdk.dev/
 
 // 1. 修改引入：从直接引入 openai 改为引入 createOpenAI 用于自定义配置
 import { createOpenAI } from "@ai-sdk/openai"; // createOpenAI 是一个工厂函数，从 ai-sdk/openai 包中导入，用于创建自定义配置的 OpenAI 客户端实例

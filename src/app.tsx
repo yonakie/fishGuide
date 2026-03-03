@@ -1,4 +1,12 @@
 /** biome-ignore-all lint/correctness/useUniqueElementIds: it's alright */
+
+// agents是cloudflare的代理SDK，文档见https://developers.cloudflare.com/agents/api-reference/agents-api/，分为两种：
+// （1）server side的Agent class，用来Encapsulates agent logic: connections, state, methods, AI models, error handling。我的后端文件server.ts里用了这个里面的一些东西，不过我的Agent实例不是extends Agent这个class创建的，而是extends了下面的一个叫AiChatAgent的东西。通过某个Agent的class，可以拥有数百万个实例。每个实例都是一个独立运行的微型服务器，从而实现横向扩展。实例通过唯一标识符（用户 ID、电子邮件、工单号等）进行寻址。
+  // Q：每个实例对应一个用户，里面可以有好多个不同的属于这个用户的session，还是说每个实例对应一个session、每个用户每创建一个对话就有一个新的实例？
+    // 【A】这个不是固定规则，取决于你用什么 ID 去路由实例。同一个 id 永远命中同一个实例；换一个 id 就是新实例，你可以用userId作为ID，也可以用sessionId作为ID。所以两种都可以。要“用户级长期记忆”→ 每用户一个实例。要“会话强隔离、易删除”→ 每会话一个实例。
+// （2）Client-side SDK，一共就仨，AgentClient, useAgent和useAgentChat，是用来建立浏览器和后台的连接的。
+
+// 这里我的后端用的是AIChatAgent这个SDK，前端用的是useAgentChat，根据官方文档（），这俩一起可以实现：前者让消息会自动持久化到 SQLite，断开连接后流会自动恢复，工具调用可以在服务器和客户端之间运行；后者是个hook，用来构建用户界面。
 import { useEffect, useState, useRef, useCallback, use } from "react";
 import { useAgent } from "agents/react";
 import { isStaticToolUIPart } from "ai";
@@ -139,8 +147,10 @@ export default function Chat() {
     <div className="h-screen w-full p-4 flex justify-center items-center bg-fixed overflow-hidden">
       <HasOpenAIKey />
       <div className="h-[calc(100vh-2rem)] w-full mx-auto max-w-lg flex flex-col shadow-xl rounded-md overflow-hidden relative border border-neutral-300 dark:border-neutral-800">
-        <div className="px-4 py-3 border-b border-neutral-300 dark:border-neutral-800 flex items-center gap-3 sticky top-0 z-10">
+        {/* 头部盒子 */}
+        <div className="px-4 py-3 border-b border-neutral-300 dark:border-neutral-800 bg-red-100 dark:bg-[#66ccff] flex items-center gap-3 sticky top-0 z-10">
           <div className="flex items-center justify-center h-8 w-8">
+            {/* 左侧图标 */}
             <svg
               width="28px"
               height="28px"
@@ -159,9 +169,10 @@ export default function Chat() {
           </div>
 
           <div className="flex-1">
-            <h2 className="font-semibold text-base">AI Chat Agent</h2>
+            <h2 className="font-semibold text-base">瑜的AI Chat Agent</h2>
           </div>
 
+          {/* debug模式的按钮 */}
           <div className="flex items-center gap-2 mr-2">
             <BugIcon size={16} />
             <Toggle
@@ -193,9 +204,9 @@ export default function Chat() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 max-h-[calc(100vh-10rem)]">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 max-h-[calc(100vh-10rem)] bg-blue-100">
           {agentMessages.length === 0 && (
-            <div className="h-full flex items-center justify-center">
+            <div className="h-full flex items-center justify-center bg-red-100">
               <Card className="p-6 max-w-md mx-auto bg-neutral-100 dark:bg-neutral-900">
                 <div className="text-center space-y-4">
                   <div className="bg-[#F48120]/10 text-[#F48120] rounded-full p-3 inline-flex">
@@ -222,46 +233,60 @@ export default function Chat() {
           )}
 
           {agentMessages.map((m, index) => {
+            // isUser是个布尔值，判断当前渲染的这条消息是不是user的，是则为true。
             const isUser = m.role === "user";
+            // showAvatar也是个布尔值，判断如果index不为0的话，渲染的上一条消息是不是不等于当前消息，如果不等于则为true，这是为了如果ai连续发送几条消息，后续消息不需要展示头像
             const showAvatar =
               index === 0 || agentMessages[index - 1]?.role !== m.role;
 
             return (
+              // 这里必须有一个key，因为react使用map渲染时，给每个元素都必须加一个独一无二的key，让react知道哪个是哪个
+              // message的最外层大框，主要是放1. bug提示 2.消息 
               <div key={m.id}>
+                {/* 如果出现了bug则渲染这个 */}
                 {showDebug && (
+                  // <pre> 是 HTML 的“预格式化文本”标签：会保留空格和换行，适合展示日志、代码、JSON。
                   <pre className="text-xs text-muted-foreground overflow-scroll">
+                    {/* 参数null代表不做字段筛选替换，参数2代表缩进2个空格 */}
                     {JSON.stringify(m, null, 2)}
                   </pre>
                 )}
+                {/* message的第二层框，没啥实际意义，主要是为了让isUser为真时让它里面的整块东西justify-end显示，否则就justify-start显示 */}
                 <div
                   className={`flex ${isUser ? "justify-end" : "justify-start"}`}
                 >
                   <div
                     className={`flex gap-2 max-w-[85%] ${
+                      // flex-row-reverse意思是让比方说123三个元素按照321靠右排列。flex-row就是123靠左排列。这里和上面的justify的用处区别
                       isUser ? "flex-row-reverse" : "flex-row"
                     }`}
                   >
+                    {/* 头像。如果是ai且是首条消息，则显示ai头像；如果是ai但非首条或是用户，则不需要头像 */}
                     {showAvatar && !isUser ? (
                       <Avatar username={"AI"} className="shrink-0" />
                     ) : (
                       !isUser && <div className="w-8" />
                     )}
-
+                    {/* 消息气泡最外层盒子 */}
                     <div>
+                      {/* 消息气泡第二层盒子 */}
                       <div>
+                        {/* 渲染message里的parts们，如果part是text，渲染一版；如果是调用工具，渲染另一种 */}
                         {m.parts?.map((part, i) => {
                           if (part.type === "text") {
                             return (
                               // biome-ignore lint/suspicious/noArrayIndexKey: immutable index
+                              // 消息气泡第三层盒子，分成2部分，一部分是Card组件，一部分是发送时间。
                               <div key={i}>
+                                {/* Card组件，用户和ai的样式不同 */}
                                 <Card
                                   className={`p-3 rounded-md bg-neutral-100 dark:bg-neutral-900 ${
                                     isUser
-                                      ? "rounded-br-none"
-                                      : "rounded-bl-none border-assistant-border"
+                                      ? "rounded-br-none" // 右下角的圆角去掉，变直角
+                                      : "rounded-bl-none border-assistant-border" // 左下角的圆角去掉，变直角；给 AI 气泡加边框色
                                   } ${
                                     part.text.startsWith("scheduled message")
-                                      ? "border-accent/50"
+                                      ? "border-accent/50" //设置边框颜色为强调色，50%透明度
                                       : ""
                                   } relative`}
                                 >
@@ -272,20 +297,26 @@ export default function Chat() {
                                       🕒
                                     </span>
                                   )}
+
                                   <MemoizedMarkdown
+                                  // 用消息 id + 当前 part 索引拼一个唯一标识
                                     id={`${m.id}-${i}`}
+                                    // 渲染part.text。如果开头是“scheduled message: ”，替换成空的也即删掉
                                     content={part.text.replace(
                                       /^scheduled message: /,
                                       ""
                                     )}
                                   />
                                 </Card>
+
+                                {/* 时间戳。随着气泡的左右也靠左/右展示 */}
                                 <p
                                   className={`text-xs text-muted-foreground mt-1 ${
                                     isUser ? "text-right" : "text-left"
                                   }`}
                                 >
                                   {formatTime(
+                                    // 这里的?是可选操作符，如果不存在metadata则返回undefined，不会报错“Cannot read properties of undefined”
                                     m.metadata?.createdAt
                                       ? new Date(m.metadata.createdAt)
                                       : new Date()
@@ -294,7 +325,8 @@ export default function Chat() {
                               </div>
                             );
                           }
-
+                          
+                          // 如果part是工具调用的内容且是ai发来的，就从part
                           if (
                             isStaticToolUIPart(part) &&
                             m.role === "assistant"
@@ -330,6 +362,7 @@ export default function Chat() {
                               />
                             );
                           }
+                          
                           return null;
                         })}
                       </div>
