@@ -3,11 +3,34 @@
  * Tools can either require human confirmation or execute automatically
  */
 import { tool, type ToolSet } from "ai";
+import { generateText, type UIMessageStreamWriter } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod/v3";
 
 import type { Chat } from "./server";
 import { getCurrentAgent } from "agents";
 import { scheduleSchema } from "agents/schedule";
+import { GUIDE_DATA_PART, type GuideEvent } from "./shared";
+import { putTtsText } from "./tts-cache";
+
+const ark = createOpenAI({
+  baseURL: "https://ark.cn-beijing.volces.com/api/v3",
+  apiKey: process.env.OPENAI_API_KEY,
+  compatibility: "compatible"
+} as any);
+
+const guideTextModel = ark.chat("ep-20251101235135-2lkzk");
+
+const streamGuideEvent = (
+  writer: UIMessageStreamWriter | undefined,
+  event: GuideEvent
+) => {
+  if (!writer) return;
+  writer.write({
+    type: `data-${GUIDE_DATA_PART}`,
+    data: event
+  });
+};
 
 /**
  * Weather information tool that requires human confirmation
@@ -108,6 +131,94 @@ const cancelScheduledTask = tool({
   }
 });
 
+const planAudioGuide = tool({
+  description:
+    "当用户希望生成从多个地点串联的语音解说时，提取地点列表并并行生成每个地点的讲解与音频。",
+  inputSchema: z.object({
+    spots: z
+      .array(z.string())
+      .min(1)
+      .describe("用户希望解说的地点或展品名称列表")
+  }),
+  execute: async ({ spots }, options) => {
+    const normalizedSpots = Array.from(
+      new Set(spots.map((spot) => spot.trim()).filter(Boolean))
+    );
+
+    const writer = (
+      options.experimental_context as
+        | { writer?: UIMessageStreamWriter }
+        | undefined
+    )?.writer;
+    const requestId = crypto.randomUUID();
+
+    streamGuideEvent(writer, {
+      kind: "init",
+      requestId,
+      spots: normalizedSpots
+    });
+
+    await Promise.all(
+      normalizedSpots.map(async (spotName) => {
+        streamGuideEvent(writer, {
+          kind: "processing",
+          requestId,
+          spotName
+        });
+
+        try {
+          const { text: intro } = await generateText({
+            model: guideTextModel,
+            prompt: `请为游客详细介绍“${spotName}”这个景点或者展品。要求：\n1. 风格生动有趣，像导游一样。\n2. 字数1000字左右。\n3. 输出纯文本，不要Markdown。`
+          });
+
+          try {
+            const ttsId = putTtsText(intro);
+            const audioUrl = `/tts-proxy/${ttsId}`;
+
+            console.log(`[TTS] ${spotName} created proxy url id=${ttsId}`);
+
+            streamGuideEvent(writer, {
+              kind: "done",
+              requestId,
+              spotName,
+              intro,
+              audioUrl
+            });
+          } catch (speechError) {
+            console.error(
+              `Speech generation failed for ${spotName}`,
+              speechError
+            );
+
+            streamGuideEvent(writer, {
+              kind: "error",
+              requestId,
+              spotName,
+              message: "音频生成失败，请稍后重试或更换语音方案。"
+            });
+            return;
+          }
+        } catch (error) {
+          console.error(`Guide generation failed for ${spotName}`, error);
+          streamGuideEvent(writer, {
+            kind: "error",
+            requestId,
+            spotName,
+            message: "该地点生成失败，请稍后重试。"
+          });
+        }
+      })
+    );
+
+    return {
+      requestId,
+      spots: normalizedSpots,
+      message: `已开始生成 ${normalizedSpots.join("、")} 的语音导游。`
+    };
+  }
+});
+
 /**
  * Export all available tools
  * These will be provided to the AI model to describe available capabilities
@@ -117,7 +228,8 @@ export const tools = {
   getLocalTime,
   scheduleTask,
   getScheduledTasks,
-  cancelScheduledTask
+  cancelScheduledTask,
+  planAudioGuide
 } satisfies ToolSet;
 
 /**

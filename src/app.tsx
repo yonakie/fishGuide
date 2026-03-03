@@ -2,12 +2,12 @@
 
 // agents是cloudflare的代理SDK，文档见https://developers.cloudflare.com/agents/api-reference/agents-api/，分为两种：
 // （1）server side的Agent class，用来Encapsulates agent logic: connections, state, methods, AI models, error handling。我的后端文件server.ts里用了这个里面的一些东西，不过我的Agent实例不是extends Agent这个class创建的，而是extends了下面的一个叫AiChatAgent的东西。通过某个Agent的class，可以拥有数百万个实例。每个实例都是一个独立运行的微型服务器，从而实现横向扩展。实例通过唯一标识符（用户 ID、电子邮件、工单号等）进行寻址。
-  // Q：每个实例对应一个用户，里面可以有好多个不同的属于这个用户的session，还是说每个实例对应一个session、每个用户每创建一个对话就有一个新的实例？
-    // 【A】这个不是固定规则，取决于你用什么 ID 去路由实例。同一个 id 永远命中同一个实例；换一个 id 就是新实例，你可以用userId作为ID，也可以用sessionId作为ID。所以两种都可以。要“用户级长期记忆”→ 每用户一个实例。要“会话强隔离、易删除”→ 每会话一个实例。
+// Q：每个实例对应一个用户，里面可以有好多个不同的属于这个用户的session，还是说每个实例对应一个session、每个用户每创建一个对话就有一个新的实例？
+// 【A】这个不是固定规则，取决于你用什么 ID 去路由实例。同一个 id 永远命中同一个实例；换一个 id 就是新实例，你可以用userId作为ID，也可以用sessionId作为ID。所以两种都可以。要“用户级长期记忆”→ 每用户一个实例。要“会话强隔离、易删除”→ 每会话一个实例。
 // （2）Client-side SDK，一共就仨，AgentClient, useAgent和useAgentChat，是用来建立浏览器和后台的连接的。
 
 // 这里我的后端用的是AIChatAgent这个SDK，前端用的是useAgentChat，根据官方文档（），这俩一起可以实现：前者让消息会自动持久化到 SQLite，断开连接后流会自动恢复，工具调用可以在服务器和客户端之间运行；后者是个hook，用来构建用户界面。
-import { useEffect, useState, useRef, useCallback, use } from "react";
+import { useEffect, useState, useRef, useCallback, use, useMemo } from "react";
 import { useAgent } from "agents/react";
 import { isStaticToolUIPart } from "ai";
 import { useAgentChat } from "agents/ai-react";
@@ -22,6 +22,11 @@ import { Toggle } from "@/components/toggle/Toggle";
 import { Textarea } from "@/components/textarea/Textarea";
 import { MemoizedMarkdown } from "@/components/memoized-markdown";
 import { ToolInvocationCard } from "@/components/tool-invocation-card/ToolInvocationCard";
+import {
+  GUIDE_DATA_PART,
+  type GuideEvent,
+  type GuideSpotStatus
+} from "./shared";
 
 // Icon imports
 import {
@@ -39,6 +44,38 @@ import {
 const toolsRequiringConfirmation: (keyof typeof tools)[] = [
   "getWeatherInformation"
 ];
+
+type GuideCardState = {
+  requestId: string;
+  spotName: string;
+  status: GuideSpotStatus;
+  intro?: string;
+  audioUrl?: string;
+  message?: string;
+};
+
+const guideStatusText: Record<GuideSpotStatus, string> = {
+  pending: "等待生成",
+  processing: "生成中",
+  done: "已完成",
+  error: "生成失败"
+};
+
+function isGuideDataPart(
+  part: unknown
+): part is { type: `data-${typeof GUIDE_DATA_PART}`; data: GuideEvent } {
+  if (!part || typeof part !== "object") return false;
+  const maybePart = part as { type?: string; data?: unknown };
+  return maybePart.type === `data-${GUIDE_DATA_PART}` && !!maybePart.data;
+}
+
+function getGuideRequestIdFromToolOutput(output: unknown): string | undefined {
+  if (!output || typeof output !== "object") return undefined;
+  const maybeOutput = output as { requestId?: unknown };
+  return typeof maybeOutput.requestId === "string"
+    ? maybeOutput.requestId
+    : undefined;
+}
 
 export default function Chat() {
   const [theme, setTheme] = useState<"dark" | "light">(() => {
@@ -139,8 +176,99 @@ export default function Chat() {
     )
   );
 
+  const guideCardsByRequest = useMemo(() => {
+    const requestMap = new Map<
+      string,
+      {
+        order: number;
+        cards: Map<string, GuideCardState>;
+      }
+    >();
+    let order = 0;
+
+    for (const message of agentMessages) {
+      const parts = message.parts ?? [];
+
+      for (const part of parts) {
+        if (!isGuideDataPart(part)) continue;
+        const event = part.data;
+
+        if (!requestMap.has(event.requestId)) {
+          requestMap.set(event.requestId, {
+            order: order++,
+            cards: new Map<string, GuideCardState>()
+          });
+        }
+
+        const requestItem = requestMap.get(event.requestId)!;
+
+        if (event.kind === "init") {
+          for (const spotName of event.spots) {
+            requestItem.cards.set(spotName, {
+              requestId: event.requestId,
+              spotName,
+              status: "pending"
+            });
+          }
+          continue;
+        }
+
+        const existing = requestItem.cards.get(event.spotName) ?? {
+          requestId: event.requestId,
+          spotName: event.spotName,
+          status: "pending" as const
+        };
+
+        if (event.kind === "processing") {
+          requestItem.cards.set(event.spotName, {
+            ...existing,
+            status: "processing"
+          });
+        }
+
+        if (event.kind === "done") {
+          requestItem.cards.set(event.spotName, {
+            ...existing,
+            status: "done",
+            intro: event.intro,
+            audioUrl: event.audioUrl
+          });
+        }
+
+        if (event.kind === "error") {
+          requestItem.cards.set(event.spotName, {
+            ...existing,
+            status: "error",
+            message: event.message
+          });
+        }
+      }
+    }
+
+    return new Map(
+      Array.from(requestMap.entries())
+        .sort((a, b) => a[1].order - b[1].order)
+        .map(([requestId, item]) => [requestId, Array.from(item.cards.values())])
+    );
+  }, [agentMessages]);
+
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const handleGuideAudioPlay = (
+    event: React.SyntheticEvent<HTMLAudioElement>
+  ) => {
+    const currentAudio = event.currentTarget;
+    const allGuideAudios = document.querySelectorAll<HTMLAudioElement>(
+      'audio[data-guide-audio="true"]'
+    );
+
+    allGuideAudios.forEach((audio) => {
+      if (audio !== currentAudio && !audio.paused) {
+        audio.pause();
+      }
+    });
   };
 
   return (
@@ -241,7 +369,7 @@ export default function Chat() {
 
             return (
               // 这里必须有一个key，因为react使用map渲染时，给每个元素都必须加一个独一无二的key，让react知道哪个是哪个
-              // message的最外层大框，主要是放1. bug提示 2.消息 
+              // message的最外层大框，主要是放1. bug提示 2.消息
               <div key={m.id}>
                 {/* 如果出现了bug则渲染这个 */}
                 {showDebug && (
@@ -299,7 +427,7 @@ export default function Chat() {
                                   )}
 
                                   <MemoizedMarkdown
-                                  // 用消息 id + 当前 part 索引拼一个唯一标识
+                                    // 用消息 id + 当前 part 索引拼一个唯一标识
                                     id={`${m.id}-${i}`}
                                     // 渲染part.text。如果开头是“scheduled message: ”，替换成空的也即删掉
                                     content={part.text.replace(
@@ -325,7 +453,7 @@ export default function Chat() {
                               </div>
                             );
                           }
-                          
+
                           // 如果part是工具调用的内容且是ai发来的，就从part
                           if (
                             isStaticToolUIPart(part) &&
@@ -337,32 +465,103 @@ export default function Chat() {
                               toolsRequiringConfirmation.includes(
                                 toolName as keyof typeof tools
                               );
+                            const guideRequestId =
+                              toolName === "planAudioGuide"
+                                ? getGuideRequestIdFromToolOutput(part.output)
+                                : undefined;
+                            const requestCards = guideRequestId
+                              ? guideCardsByRequest.get(guideRequestId)
+                              : undefined;
 
                             return (
-                              <ToolInvocationCard
+                              <div
                                 // biome-ignore lint/suspicious/noArrayIndexKey: using index is safe here as the array is static
                                 key={`${toolCallId}-${i}`}
-                                toolUIPart={part}
-                                toolCallId={toolCallId}
-                                needsConfirmation={needsConfirmation}
-                                onSubmit={({ toolCallId, result }) => {
-                                  addToolResult({
-                                    tool: part.type.replace("tool-", ""),
-                                    toolCallId,
-                                    output: result
-                                  });
-                                }}
-                                addToolResult={(toolCallId, result) => {
-                                  addToolResult({
-                                    tool: part.type.replace("tool-", ""),
-                                    toolCallId,
-                                    output: result
-                                  });
-                                }}
-                              />
+                                className="space-y-2"
+                              >
+                                <ToolInvocationCard
+                                  toolUIPart={part}
+                                  toolCallId={toolCallId}
+                                  needsConfirmation={needsConfirmation}
+                                  onSubmit={({ toolCallId, result }) => {
+                                    addToolResult({
+                                      tool: part.type.replace("tool-", ""),
+                                      toolCallId,
+                                      output: result
+                                    });
+                                  }}
+                                  addToolResult={(toolCallId, result) => {
+                                    addToolResult({
+                                      tool: part.type.replace("tool-", ""),
+                                      toolCallId,
+                                      output: result
+                                    });
+                                  }}
+                                />
+
+                                {toolName === "planAudioGuide" &&
+                                  requestCards &&
+                                  requestCards.length > 0 && (
+                                    <div className="space-y-2">
+                                      {requestCards.map((card) => (
+                                        <Card
+                                          key={`${card.requestId}-${card.spotName}`}
+                                          className="p-3 rounded-md bg-neutral-100 dark:bg-neutral-900"
+                                        >
+                                          <div className="flex items-center justify-between mb-2">
+                                            <h4 className="font-medium text-sm">
+                                              {card.spotName}
+                                            </h4>
+                                            <span className="text-xs text-muted-foreground">
+                                              {guideStatusText[card.status]}
+                                            </span>
+                                          </div>
+
+                                          {card.intro && (
+                                            <p className="text-sm whitespace-pre-wrap mb-2 line-clamp-6">
+                                              {card.intro}
+                                            </p>
+                                          )}
+
+                                          {card.audioUrl && (
+                                            <audio
+                                              controls
+                                              src={card.audioUrl}
+                                              className="w-full"
+                                              data-guide-audio="true"
+                                              onPlay={handleGuideAudioPlay}
+                                            />
+                                          )}
+
+                                          {!card.audioUrl &&
+                                            (card.status === "pending" ||
+                                              card.status === "processing") && (
+                                              <p className="text-xs text-muted-foreground">
+                                                音频生成中...
+                                              </p>
+                                            )}
+
+                                          {!card.audioUrl &&
+                                            card.status === "done" && (
+                                              <p className="text-xs text-muted-foreground">
+                                                解说词已生成，但音频未返回。
+                                              </p>
+                                            )}
+
+                                          {card.status === "error" && (
+                                            <p className="text-xs text-red-500">
+                                              {card.message ??
+                                                "该地点生成失败，请稍后再试。"}
+                                            </p>
+                                          )}
+                                        </Card>
+                                      ))}
+                                    </div>
+                                  )}
+                              </div>
                             );
                           }
-                          
+
                           return null;
                         })}
                       </div>
