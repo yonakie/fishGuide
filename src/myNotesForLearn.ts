@@ -69,9 +69,93 @@ type Schedule<T = string> =
  */
 
 // 实际代码示例
-const stream = createUIMessageStream({
-  // 'execute' 是这个配置对象的一个属性，值是一个 async 函数
-  execute: async ({ writer }) => { 
-     // ... 具体的业务逻辑 ...
+// const stream = createUIMessageStream({
+//   // 'execute' 是这个配置对象的一个属性，值是一个 async 函数
+//   execute: async ({ writer }) => { 
+//      // ... 具体的业务逻辑 ...
+//   }
+// });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//   +++++++++++++++++++++++++  messages变量和part变量长啥样: +++++++++++++++++++++++
+
+// 你推测得很准：在这个项目里，messages 是“消息数组”，数组里每一项是一条消息对象；每条消息里有 parts 数组，用来承载这条消息的不同片段。
+
+// - 前端拿到的是 useAgentChat 返回的 messages，并重命名成 agentMessages，见 app.tsx
+// - 渲染时就是遍历消息，再遍历每条消息的 parts，见 app.tsx
+// - 后端工具确认与清理逻辑也都是按 message.parts 处理，见 utils.ts
+
+// 一个非常贴近你项目的示例（简化版）：
+
+// - messages（数组）
+[
+  {
+    id: "m1",
+    role: "user",
+    parts: [
+      { type: "text", text: "帮我做故宫和天坛的语音导览" }
+    ],
+    metadata: { createdAt: "2026-03-04T10:00:00.000Z" }
+  },
+  {
+    id: "m2",
+    role: "assistant",
+    parts: [
+      {
+        type: "tool-planAudioGuide",
+        toolCallId: "tc_1",
+        state: "output-available",
+        input: { spots: ["故宫", "天坛"] },
+        output: {
+          requestId: "req_123",
+          spots: ["故宫", "天坛"],
+          message: "已开始生成 故宫、天坛 的语音导游。"
+        }
+      }
+    ],
+    metadata: { createdAt: "2026-03-04T10:00:02.000Z" }
+  },
+  {
+    id: "m3",
+    role: "assistant",
+    parts: [
+      {
+        type: "data-guide_event",
+        data: { kind: "processing", requestId: "req_123", spotName: "故宫" }
+      },
+      {
+        type: "data-guide_event",
+        data: {
+          kind: "done",
+          requestId: "req_123",
+          spotName: "故宫",
+          intro: "……导览词……",
+          audioUrl: "/tts-proxy/abc"
+        }
+      }
+    ]
   }
-});
+]
+
+// 再给你一个“需要人工确认工具”的典型 part（对应 getWeatherInformation）：
+
+// - tool part（等待确认）
+const note = {
+  type: "tool-getWeatherInformation",
+  toolCallId: "tc_weather_1",
+  state: "input-available",
+  input: { city: "北京" },
+};
+

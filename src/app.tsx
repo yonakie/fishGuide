@@ -41,10 +41,12 @@ import {
 
 // List of tools that require human confirmation
 // NOTE: this should match the tools that don't have execute functions in tools.ts
+// 如下数组里的tool，必需用户confirm才能调用。typeof tools意思是把这个tools的结构提取成一个类型，keyof是指取这个类型里的keys，外面套括号和[]意思是这个toolsRequiringConfirmation是个数组，元素需要符合()里的规定
 const toolsRequiringConfirmation: (keyof typeof tools)[] = [
   "getWeatherInformation"
 ];
 
+// 导览卡片数据结构的类型定义
 type GuideCardState = {
   requestId: string;
   spotName: string;
@@ -54,6 +56,8 @@ type GuideCardState = {
   message?: string;
 };
 
+// 尖括号里的意思是，键必须覆盖 GuideSpotStatus 里的所有状态，值必须是字符串。
+// Record<K, V> 是 TS 内置工具类型，意思是：一个对象，键的类型是 K，值的类型是 V
 const guideStatusText: Record<GuideSpotStatus, string> = {
   pending: "等待生成",
   processing: "生成中",
@@ -61,6 +65,7 @@ const guideStatusText: Record<GuideSpotStatus, string> = {
   error: "生成失败"
 };
 
+// 判断part是否为guideDataPart
 function isGuideDataPart(
   part: unknown
 ): part is { type: `data-${typeof GUIDE_DATA_PART}`; data: GuideEvent } {
@@ -121,6 +126,7 @@ export default function Chat() {
 
   const [agentInput, setAgentInput] = useState("");
   const handleAgentInputChange = (
+    // 规定event类型，React.ChangeEvent<>意思是它是react的输入变化事件类型也即onChange，尖括号里面的俩东西表示这个事件可能来自这俩html元素中的任意一个，即input或者Textarea
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     setAgentInput(e.target.value);
@@ -149,7 +155,7 @@ export default function Chat() {
   };
 
   const {
-    messages: agentMessages,
+    messages: agentMessages, // 前端拿到的是 useAgentChat 返回的 messages，并重命名成 agentMessages
     addToolResult,
     clearHistory,
     status,
@@ -575,54 +581,68 @@ export default function Chat() {
         </div>
 
         {/* Input Area */}
+        {/* 我们可以看到这里有2处submit，一处是输入框按回车的onkeydown事件调用了handleAgentSubmit函数，一处是按submit按钮触发form的onSubmit里的handleAgentSubmit函数 */}
+        {/* 提交逻辑其实放啥元素上都行，反正不涉及DOM取输入框value，因为submit的是setState的agentInput这个变量的值 */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
             handleAgentSubmit(e, {
               annotations: {
                 hello: "world"
-              }
+              } // 这是handleAgentSubmit的第二个参数，就是函数里提交的extradata，此处无实际含义仅占位
             });
             setTextareaHeight("auto"); // Reset height after submission
           }}
           className="p-3 bg-neutral-50 absolute bottom-0 left-0 right-0 z-10 border-t border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900"
         >
+        {/* form表单内的第一层盒子 */}
           <div className="flex items-center gap-2">
+            {/* form表单内的第2层盒子，里面包裹了Textarea和按钮区 */}
             <div className="flex-1 relative">
+              {/* 输入区 */}
               <Textarea
-                disabled={pendingToolCallConfirmation}
+                disabled={pendingToolCallConfirmation} // 这是个布尔值，是在上面toolinvocationcard那边定义的，如果为true说明目前需要等待用户批准工具调用，则textarea禁止输入
+                // 禁止输入时，输入框的placeholder不同
                 placeholder={
                   pendingToolCallConfirmation
                     ? "Please respond to the tool confirmation above..."
                     : "Send a message..."
                 }
                 className="flex w-full border border-neutral-200 dark:border-neutral-700 px-3 py-2  ring-offset-background placeholder:text-neutral-500 dark:placeholder:text-neutral-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 dark:focus-visible:ring-neutral-700 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-900 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm min-h-[24px] max-h-[calc(75dvh)] overflow-hidden resize-none rounded-2xl text-base! pb-10 dark:bg-neutral-900"
+                // 这是一个受控组件，逻辑是：输入框onchange触发handleAgentInputChange(e)，将e.target.value用setState更新agentInput，而输入框的值被更新为=agentinput，这样写的好处是方便我后面发送完了可以通过setstate('')清空输入框
                 value={agentInput}
                 onChange={(e) => {
                   handleAgentInputChange(e);
                   // Auto-resize the textarea
-                  e.target.style.height = "auto";
+                  // 这边必须写，写了以后我的输入框随着我输入内容的增加而自动变高，而不是高度限制。实现逻辑也是
+                  e.target.style.height = "auto"; //试了一下这个注释掉也不影响这个功能
                   e.target.style.height = `${e.target.scrollHeight}px`;
+                  // 为啥需要给高度也绑个state？如果没有它，发送后被撑大的输入框无法复原。我发现我的关键误区在于：清空输入框的setagentInput('')根本不会触发onChange，只有用户的手动修改才会。所以我们需要状态绑定，让发送后清空输入框后，下面的发送逻辑里会setstate一下，导致style={{height: textareaHeight}}的变动，从而实时改变输入框高度。
                   setTextareaHeight(`${e.target.scrollHeight}px`);
                 }}
                 onKeyDown={(e) => {
                   if (
                     e.key === "Enter" &&
                     !e.shiftKey &&
+                    // 判断是不是正在输入法拼字中（比如中文拼音还没选词）
                     !e.nativeEvent.isComposing
                   ) {
+                    // 阻止浏览器默认行为，避免enter触发什么别的，就按照我写的来
                     e.preventDefault();
+                    // 调用sendMessage提交当前agentInput的值。括号里是因为此处e是键盘事件类型，但是handleAgentSubmit函数里e的类型定义为React.FormEvent（规定成formevent是因为下面的button点击是发消息的主要动作，button的type是submit）
                     handleAgentSubmit(e as unknown as React.FormEvent);
                     setTextareaHeight("auto"); // Reset height on Enter submission
                   }
                 }}
-                rows={2}
-                style={{ height: textareaHeight }}
+                rows={2} // 设定输入框默认高度为2行。改它可以看到它变高/变扁
+                style={{ height: textareaHeight }} // 让输入框高度随着文字高度改变
               />
+
+              {/* 发送按钮，分成2种情况，如果当前模型处在输出状况中，就渲染停止按钮，否则渲染发送按钮 */}
               <div className="absolute bottom-0 right-0 p-2 w-fit flex flex-row justify-end">
                 {status === "submitted" || status === "streaming" ? (
                   <button
-                    type="button"
+                    type="button" // 因为form里的button的type默认是submit，这里写type=button是为了告诉浏览器这只是个普通按钮不触发submit
                     onClick={stop}
                     className="inline-flex items-center cursor-pointer justify-center gap-2 whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 rounded-full p-1.5 h-fit border border-neutral-200 dark:border-neutral-800"
                     aria-label="Stop generation"
