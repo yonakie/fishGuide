@@ -110,6 +110,7 @@ export default function Chat() {
     localStorage.setItem("theme", theme);
   }, [theme]);
 
+
   // Scroll to bottom on mount
   useEffect(() => {
     scrollToBottom();
@@ -181,6 +182,13 @@ export default function Chat() {
         )
     )
   );
+
+  // 这里每次更新messages都打印一下，看看长啥样。
+  // Q：不是说JS会变量提升吗？为什么我把这个代码写在通过useAgentChat解构获取agentMessages之前，它就报错说我不能在声明变量前使用它？
+  // A：var：会提升并初始化为 undefined，提前读不会立刻报错（但很坑）。let/const：也会“被提升到作用域顶部做登记”，但在声明语句之前处于 TDZ（暂时性死区），提前访问会报错。
+  useEffect(() => {
+    console.log("[agentMessages]", agentMessages);
+  }, [agentMessages]);
 
   const guideCardsByRequest = useMemo(() => {
     const requestMap = new Map<

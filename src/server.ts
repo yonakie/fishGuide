@@ -258,10 +258,13 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
           stopWhen: stepCountIs(10)
         });
 
+        console.log("这是result：", result);
         writer.merge(result.toUIMessageStream());
       }
     });
 
+    console.log("这是stream：", stream);
+    console.log("这是this.messages：", JSON.stringify(this.messages, null, 2));
     return createUIMessageStreamResponse({ stream });
   }
 
