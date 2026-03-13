@@ -22,7 +22,9 @@ export const Card = ({
     <Component
       className={cn(
         "w-full rounded-lg p-4",
+        // 撑满母盒子；四角圆角large；字体第四级
         {
+          // 这玩意冒号后面的会变成true或者false，被cn拼起来后false的不渲染
           "btn-primary": variant === "primary",
           "btn-secondary": variant === "secondary"
         },

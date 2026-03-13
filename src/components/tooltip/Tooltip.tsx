@@ -1,19 +1,21 @@
+// 这个 Tooltip 组件本质上是一个“包裹器”：它把任意子元素包起来，在合适的交互时机（鼠标悬停、键盘聚焦等）显示一段提示文字，并自动避免贴边溢出。
+
 import { useTooltip } from "@/providers/TooltipProvider";
 import { cn } from "@/lib/utils";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export type TooltipProps = {
-  children: React.ReactNode;
-  className?: string;
+  children: React.ReactNode; // 被包裹的类型，比如一个小按钮
+  className?: string; // 外部可以传入样式
   content: string;
-  id?: number | string;
+  id?: number | string; // 用于区分多个内容相同的tooltip
 };
 
 export const Tooltip = ({ children, className, content, id }: TooltipProps) => {
-  const { activeTooltip, showTooltip, hideTooltip } = useTooltip();
+  const { activeTooltip, showTooltip, hideTooltip } = useTooltip(); // 从 TooltipProvider 拿到全局 tooltip 状态与控制方法
   const [positionX, setPositionX] = useState<"center" | "left" | "right">(
     "center"
-  );
+  ); // 组件的水平定位，可以有尖括号里的三种类型
   const [positionY, setPositionY] = useState<"top" | "bottom">("top");
   const [isHoverAvailable, setIsHoverAvailable] = useState(false); // if hover state exists
   const [isPointer, setIsPointer] = useState(false); // if user is using a pointer device

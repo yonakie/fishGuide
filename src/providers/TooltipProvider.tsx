@@ -38,7 +38,7 @@ export const TooltipProvider = ({
       showTimeout.current = window.setTimeout(() => {
         setActiveTooltip(id);
         isTooltipShown.current = true;
-      }, 600);
+      }, 3000);
     }
   };
 
@@ -54,7 +54,7 @@ export const TooltipProvider = ({
 
       graceTimeout.current = window.setTimeout(() => {
         isWithinGracePeriod.current = false; // Grace period ends
-      }, 100);
+      }, 1000);
     }
   };
 

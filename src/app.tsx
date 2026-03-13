@@ -18,7 +18,7 @@ import type { tools } from "./tools";
 import { Button } from "@/components/button/Button";
 import { Card } from "@/components/card/Card";
 import { Avatar } from "@/components/avatar/Avatar";
-import { Toggle } from "@/components/toggle/Toggle";
+// import { Toggle } from "@/components/toggle/Toggle";
 import { Textarea } from "@/components/textarea/Textarea";
 import { MemoizedMarkdown } from "@/components/memoized-markdown";
 import { ToolInvocationCard } from "@/components/tool-invocation-card/ToolInvocationCard";
@@ -315,14 +315,14 @@ export default function Chat() {
           </div>
 
           {/* debug模式的按钮 */}
-          <div className="flex items-center gap-2 mr-2">
+          {/* <div className="flex items-center gap-2 mr-2">
             <BugIcon size={16} />
             <Toggle
               toggled={showDebug}
               aria-label="Toggle debug mode"
               onClick={() => setShowDebug((prev) => !prev)}
             />
-          </div>
+          </div> */}
 
           <Button
             variant="ghost"
@@ -349,12 +349,13 @@ export default function Chat() {
         <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 max-h-[calc(100vh-10rem)] bg-blue-100">
           {agentMessages.length === 0 && (
             <div className="h-full flex items-center justify-center bg-red-100">
+              {/* Card组件在app.tsx里第一次出现，它负责展示无对话情况下的欢迎卡片 */}
               <Card className="p-6 max-w-md mx-auto bg-neutral-100 dark:bg-neutral-900">
                 <div className="text-center space-y-4">
                   <div className="bg-[#F48120]/10 text-[#F48120] rounded-full p-3 inline-flex">
                     <RobotIcon size={24} />
                   </div>
-                  <h3 className="font-semibold text-lg">Welcome to AI Chat</h3>
+                  <h3 className="font-semibold text-lg">你好！我是菠萝瑜</h3>
                   <p className="text-muted-foreground text-sm">
                     Start a conversation with your AI assistant. Try asking
                     about:
@@ -405,7 +406,7 @@ export default function Chat() {
                   >
                     {/* 头像。如果是ai且是首条消息，则显示ai头像；如果是ai但非首条或是用户，则不需要头像 */}
                     {showAvatar && !isUser ? (
-                      <Avatar username={"AI"} className="shrink-0" />
+                      <Avatar username={"瑜"} className="shrink-0" tooltip={"我是瑜"}/>
                     ) : (
                       !isUser && <div className="w-8" />
                     )}
@@ -420,7 +421,7 @@ export default function Chat() {
                               // biome-ignore lint/suspicious/noArrayIndexKey: immutable index
                               // 消息气泡第三层盒子，分成2部分，一部分是Card组件，一部分是发送时间。
                               <div key={i}>
-                                {/* Card组件，用户和ai的样式不同 */}
+                                {/* Card组件第二次出现，对话框，用户和ai的样式不同 */}
                                 <Card
                                   className={`p-3 rounded-md bg-neutral-100 dark:bg-neutral-900 ${
                                     isUser

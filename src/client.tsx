@@ -1,3 +1,4 @@
+// 前端的最外层。
 import "./styles.css";
 import { createRoot } from "react-dom/client";
 import App from "./app";
