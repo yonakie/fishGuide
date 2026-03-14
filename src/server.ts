@@ -19,7 +19,6 @@ import {
 import { createOpenAI } from "@ai-sdk/openai"; // createOpenAI 是一个工厂函数，从 ai-sdk/openai 包中导入，用于创建自定义配置的 OpenAI 客户端实例
 import { processToolCalls, cleanupMessages } from "./utils"; // 导入自定义的工具调用处理和消息清理函数
 import { tools, executions } from "./tools"; // 导入自定义工具和执行器
-import { getTtsText } from "./tts-cache";
 
 // 2. 配置火山引擎 (Ark) 客户端
 // 对应你 Python 代码里的 base_url 和 client 初始化
@@ -32,146 +31,6 @@ const ark = createOpenAI({
 // 3. 定义模型
 // 对应你 Python 代码里的 model="ep-20251101235135-2lkzk"
 const model = ark.chat("ep-20251101235135-2lkzk"); //使用上面创建的 ark 客户端，调用它的 .chat() 方法, 并传入模型 ID，来创建一个特定的聊天模型实例。
-
-const normalizeTextForFasterTts = (text: string) => {
-  return text
-    .replace(/\s+/g, " ")
-    .replace(/[“”‘’"']/g, "")
-    .replace(/[。！？!?；;：:]/g, "，")
-    .replace(/[（(][^)）]*[)）]/g, "")
-    .replace(/[^\u4e00-\u9fa5a-zA-Z0-9，,。.!?！？；;：:\-—\s]/g, "")
-    .replace(/，{2,}/g, "，")
-    .trim();
-};
-
-const splitTextForTts = (text: string, maxLength = 110) => {
-  const normalized = text.replace(/\s+/g, " ").trim();
-  if (normalized.length <= maxLength) return [normalized];
-
-  const segments: string[] = [];
-  let current = "";
-  const parts = normalized.split(/([。！？!?；;，,])/g);
-
-  for (let index = 0; index < parts.length; index += 2) {
-    const content = parts[index] ?? "";
-    const punctuation = parts[index + 1] ?? "";
-    const sentence = `${content}${punctuation}`.trim();
-    if (!sentence) continue;
-
-    if (current.length + sentence.length > maxLength) {
-      if (current) segments.push(current);
-      current = sentence;
-    } else {
-      current += sentence;
-    }
-  }
-
-  if (current) segments.push(current);
-  return segments.length > 0 ? segments : [normalized];
-};
-
-const fetchGoogleTtsChunk = async (
-  chunk: string,
-  index: number,
-  total: number,
-  fullTextLength: number
-) => {
-  const endpoints = [
-    {
-      baseUrl: "https://translate.google.com/translate_tts",
-      client: "tw-ob"
-    },
-    {
-      baseUrl: "https://translate.googleapis.com/translate_tts",
-      client: "gtx"
-    }
-  ] as const;
-
-  const errors: string[] = [];
-
-  for (const endpoint of endpoints) {
-    const url = new URL(endpoint.baseUrl);
-    url.searchParams.set("ie", "UTF-8");
-    url.searchParams.set("tl", "zh-CN");
-    url.searchParams.set("client", endpoint.client);
-    url.searchParams.set("q", chunk);
-    url.searchParams.set("idx", String(index));
-    url.searchParams.set("total", String(total));
-    url.searchParams.set("textlen", String(fullTextLength));
-
-    const response = await fetch(url.toString(), {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-        Accept: "audio/mpeg,*/*"
-      }
-    });
-
-    if (response.ok) {
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      if (!bytes.length) {
-        errors.push(`${endpoint.client}: empty audio`);
-      } else {
-        return bytes;
-      }
-    } else {
-      errors.push(`${endpoint.client}: HTTP ${response.status}`);
-    }
-  }
-
-  throw new Error(errors.join(" | "));
-};
-
-const synthesizeGoogleTts = async (text: string): Promise<Uint8Array> => {
-  const optimizedText = normalizeTextForFasterTts(text);
-  const chunks = splitTextForTts(optimizedText);
-  const buffers: Uint8Array[] = [];
-
-  for (let index = 0; index < chunks.length; index++) {
-    const chunk = chunks[index];
-    let lastError: unknown;
-
-    for (let retry = 0; retry < 2; retry++) {
-      try {
-        const bytes = await fetchGoogleTtsChunk(
-          chunk,
-          index,
-          chunks.length,
-          optimizedText.length
-        );
-        buffers.push(bytes);
-        lastError = undefined;
-        break;
-      } catch (error) {
-        lastError = error;
-        if (retry === 0) {
-          await new Promise((resolve) => setTimeout(resolve, 200));
-        }
-      }
-    }
-
-    if (lastError) {
-      throw new Error(
-        `Google TTS chunk failed at index ${index}: ${
-          lastError instanceof Error ? lastError.message : String(lastError)
-        }`
-      );
-    }
-  }
-
-  const merged = Buffer.concat(buffers.map((buffer) => Buffer.from(buffer)));
-  if (!merged.length) {
-    throw new Error("Google TTS merged audio is empty");
-  }
-
-  return new Uint8Array(merged);
-};
-
-const synthesizeTtsWithFallback = async (text: string): Promise<Uint8Array> => {
-  const googleAudio = await synthesizeGoogleTts(text);
-  console.log("[TTS Proxy] provider=google-fast-normalized");
-  return googleAudio;
-};
 
 /**
  * Chat Agent implementation that handles real-time AI chat interactions
@@ -253,7 +112,8 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
             typeof allTools
           >,
           experimental_context: {
-            writer
+            writer,
+            guideAudioBucket: this.env.GUIDE_AUDIO_BUCKET
           },
           stopWhen: stepCountIs(10)
         });
@@ -300,30 +160,29 @@ export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext) {
     const url = new URL(request.url);
 
-    if (url.pathname.startsWith("/tts-proxy/")) {
-      const ttsId = url.pathname.replace("/tts-proxy/", "").trim();
-      const text = getTtsText(ttsId);
+    if (url.pathname.startsWith("/audio/")) {
+      const encodedKey = url.pathname.replace("/audio/", "").trim();
+      const objectKey = decodeURIComponent(encodedKey);
 
-      if (!text) {
-        return new Response("TTS text not found or expired", { status: 404 });
+      if (!objectKey) {
+        return new Response("Missing audio key", { status: 400 });
       }
 
-      try {
-        const audioBytes = await synthesizeTtsWithFallback(text);
-        const audioBuffer = audioBytes.buffer.slice(
-          audioBytes.byteOffset,
-          audioBytes.byteOffset + audioBytes.byteLength
-        ) as ArrayBuffer;
-        return new Response(audioBuffer, {
-          headers: {
-            "content-type": "audio/mpeg",
-            "cache-control": "public, max-age=3600"
-          }
-        });
-      } catch (error) {
-        console.error("TTS proxy synthesis failed", error);
-        return new Response("TTS proxy synthesis failed", { status: 500 });
+      const object = await env.GUIDE_AUDIO_BUCKET.get(objectKey);
+      if (!object || !object.body) {
+        return new Response("Audio not found", { status: 404 });
       }
+
+      const headers = new Headers();
+      headers.set("content-type", object.httpMetadata?.contentType ?? "audio/mpeg");
+      headers.set("cache-control", "public, max-age=31536000, immutable");
+      if (object.httpEtag) {
+        headers.set("etag", object.httpEtag);
+      }
+
+      return new Response(object.body, {
+        headers
+      });
     }
 
     if (url.pathname === "/check-open-ai-key") {

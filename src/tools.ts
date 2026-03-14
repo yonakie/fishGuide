@@ -11,7 +11,7 @@ import type { Chat } from "./server";
 import { getCurrentAgent } from "agents";
 import { scheduleSchema } from "agents/schedule";
 import { GUIDE_DATA_PART, type GuideEvent } from "./shared";
-import { putTtsText } from "./tts-cache";
+import { hashText, synthesizeTtsWithFallback } from "./tts";
 
 const ark = createOpenAI({
   baseURL: "https://ark.cn-beijing.volces.com/api/v3",
@@ -30,6 +30,67 @@ const streamGuideEvent = (
     type: `data-${GUIDE_DATA_PART}`,
     data: event
   });
+};
+
+const ensureAudioAssetsTable = (agent: Chat) => {
+  agent.sql`
+    CREATE TABLE IF NOT EXISTS audio_assets (
+      id TEXT PRIMARY KEY,
+      text_hash TEXT NOT NULL,
+      object_key TEXT NOT NULL,
+      voice TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(text_hash, voice)
+    )
+  `;
+};
+
+const getOrCreateAudioAsset = async (
+  agent: Chat,
+  bucket: R2Bucket,
+  intro: string
+) => {
+  ensureAudioAssetsTable(agent);
+
+  const textHash = await hashText(intro);
+  const voice = "google-tts-zh-CN-v1";
+  const objectKey = `guide-audio/${textHash}.mp3`;
+
+  const existing = agent.sql<{ id: string; object_key: string }>`
+    SELECT id, object_key FROM audio_assets
+    WHERE text_hash = ${textHash} AND voice = ${voice}
+    LIMIT 1
+  `;
+
+  if (existing.length > 0) {
+    return {
+      audioAssetId: existing[0].id,
+      audioUrl: `/audio/${encodeURIComponent(existing[0].object_key)}`
+    };
+  }
+
+  const audioBytes = await synthesizeTtsWithFallback(intro);
+
+  await bucket.put(objectKey, audioBytes, {
+    httpMetadata: {
+      contentType: "audio/mpeg"
+    },
+    customMetadata: {
+      textHash,
+      voice
+    }
+  });
+
+  const audioAssetId = crypto.randomUUID();
+  agent.sql`
+    INSERT INTO audio_assets (id, text_hash, object_key, voice, created_at)
+    VALUES (${audioAssetId}, ${textHash}, ${objectKey}, ${voice}, ${new Date().toISOString()})
+  `;
+
+  return {
+    audioAssetId,
+    audioUrl: `/audio/${encodeURIComponent(objectKey)}`
+  };
 };
 
 /**
@@ -141,6 +202,21 @@ const planAudioGuide = tool({
       .describe("用户希望解说的地点或展品名称列表")
   }),
   execute: async ({ spots }, options) => {
+    const { agent } = getCurrentAgent<Chat>();
+    if (!agent) {
+      throw new Error("Agent context unavailable for planAudioGuide");
+    }
+
+    const guideAudioBucket = (
+      options.experimental_context as
+        | { guideAudioBucket?: R2Bucket }
+        | undefined
+    )?.guideAudioBucket;
+
+    if (!guideAudioBucket) {
+      throw new Error("R2 bucket unavailable in tool context");
+    }
+
     const normalizedSpots = Array.from(
       new Set(spots.map((spot) => spot.trim()).filter(Boolean))
     );
@@ -173,10 +249,15 @@ const planAudioGuide = tool({
           });
 
           try {
-            const ttsId = putTtsText(intro);
-            const audioUrl = `/tts-proxy/${ttsId}`;
+            const { audioAssetId, audioUrl } = await getOrCreateAudioAsset(
+              agent,
+              guideAudioBucket,
+              intro
+            );
 
-            console.log(`[TTS] ${spotName} created proxy url id=${ttsId}`);
+            console.log(
+              `[TTS] ${spotName} persisted asset id=${audioAssetId} url=${audioUrl}`
+            );
 
             streamGuideEvent(writer, {
               kind: "done",

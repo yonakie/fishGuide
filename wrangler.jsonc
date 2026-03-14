@@ -17,6 +17,12 @@
 	"assets": {
 		"directory": "public"
 	},
+	"r2_buckets": [
+		{
+			"binding": "GUIDE_AUDIO_BUCKET",
+			"bucket_name": "guide-audio-assets"
+		}
+	],
 	"durable_objects": {
 		"bindings": [
 			{
