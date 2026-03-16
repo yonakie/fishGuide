@@ -24,3 +24,11 @@ describe("Chat worker", () => {
     expect(response.status).toBe(404);
   });
 });
+
+import { getWikiSummary } from "../src/tts";
+
+it("getWikiSummary 能拿到颐和园的介绍", async () => {
+  const result = await getWikiSummary("颐和园");
+  console.log(result); // 看看返回了什么
+  expect(result).not.toBeNull();
+});

@@ -36,8 +36,10 @@ import {
   SunIcon,
   TrashIcon,
   PaperPlaneTiltIcon,
-  StopIcon
+  StopIcon,
+  CassetteTapeIcon
 } from "@phosphor-icons/react";
+import { getOrCreateBrowserSessionId } from "./utils";
 
 // List of tools that require human confirmation
 // NOTE: this should match the tools that don't have execute functions in tools.ts
@@ -92,6 +94,10 @@ export default function Chat() {
   const [textareaHeight, setTextareaHeight] = useState("auto");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const myBrowserSessionId = useMemo(() => {
+    return getOrCreateBrowserSessionId()
+  },[]) //依赖数组[]的意思是，只有当这个数组里的变量发生变化时，我才重新去翻localStorage。既然我们传了一个空数组，里面什么都没有，就永远不会发生变化。所以 React 只会在组件第一次加载（Mount）时执行一次
+
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
@@ -122,7 +128,8 @@ export default function Chat() {
   };
 
   const agent = useAgent({
-    agent: "chat"
+    agent: "chat",
+    name: myBrowserSessionId
   });
 
   const [agentInput, setAgentInput] = useState("");
@@ -342,6 +349,16 @@ export default function Chat() {
             onClick={clearHistory}
           >
             <TrashIcon size={20} />
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="md"
+            shape="square"
+            className="rounded-full h-9 w-9"
+            // onClick={clearHistory}
+          >
+            <CassetteTapeIcon size={20} />
           </Button>
         </div>
 

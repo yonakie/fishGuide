@@ -120,3 +120,24 @@ export function cleanupMessages(messages: UIMessage[]): UIMessage[] {
     return !hasIncompleteToolCall;
   });
 }
+
+
+export function getOrCreateBrowserSessionId() {
+  const SESSION_KEY = "my_browser_session_key"
+
+  if (typeof window === "undefined") {
+    return "default-session"; 
+  }
+
+  let browserSessionId = localStorage.getItem(SESSION_KEY)
+
+  if (!browserSessionId) {
+    browserSessionId = crypto.randomUUID()
+    localStorage.setItem(SESSION_KEY, browserSessionId)
+    console.log(`该浏览器第一次访问瑜的应用，生成id=${browserSessionId}`)
+  } else {
+    console.log(`该浏览器以前访问过瑜的应用，获取id=${browserSessionId}`)
+  }
+
+  return browserSessionId
+}
