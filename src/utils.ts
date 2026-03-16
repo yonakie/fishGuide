@@ -121,7 +121,7 @@ export function cleanupMessages(messages: UIMessage[]): UIMessage[] {
   });
 }
 
-
+// 生成browserSessionId
 export function getOrCreateBrowserSessionId() {
   const SESSION_KEY = "my_browser_session_key"
 

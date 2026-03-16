@@ -22,6 +22,8 @@ import { Avatar } from "@/components/avatar/Avatar";
 import { Textarea } from "@/components/textarea/Textarea";
 import { MemoizedMarkdown } from "@/components/memoized-markdown";
 import { ToolInvocationCard } from "@/components/tool-invocation-card/ToolInvocationCard";
+import { AudioList } from '@/components/audio-list/audiolist';
+
 import {
   GUIDE_DATA_PART,
   type GuideEvent,
@@ -92,11 +94,31 @@ export default function Chat() {
   });
   const [showDebug, setShowDebug] = useState(false);
   const [textareaHeight, setTextareaHeight] = useState("auto");
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [audioItems, setAudioItems] = useState([])
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const myBrowserSessionId = useMemo(() => {
     return getOrCreateBrowserSessionId()
   },[]) //依赖数组[]的意思是，只有当这个数组里的变量发生变化时，我才重新去翻localStorage。既然我们传了一个空数组，里面什么都没有，就永远不会发生变化。所以 React 只会在组件第一次加载（Mount）时执行一次
+
+
+  // 每次动抽屉，如果是拉开抽屉，就fetch到api那边去，然后后端的fetch入口给路由了，从url拿到browserSessionId，去问对应browserSessionId的实例的物理地址，调用写好的Chat类里面的getAudioList方法，从那个实例的SQLite里拿到
+  useEffect(() => {
+    if (isDrawerOpen) {
+      fetch(`/api/audio-list?browserSessionId=${myBrowserSessionId}`)
+      .then((res) => res.json())
+      .then((data: any) => {
+        const formattedItems = data.map((item: any) => ({
+          id: item.id,
+          spotName: item.spot_name,
+          audioUrl: `/audio/${encodeURIComponent(item.object_key)}`
+        }))
+        setAudioItems(formattedItems)
+      })
+      .catch((e) => console.error("拉取导览库失败", e))
+    }
+  }, [isDrawerOpen])
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -126,6 +148,11 @@ export default function Chat() {
     const newTheme = theme === "dark" ? "light" : "dark";
     setTheme(newTheme);
   };
+
+  // const mockAudios = [
+  //   { id: "1", spotName: "海德公园", objectKey: "guide-audio/xxx.mp3", audioUrl: "/audio/guide-audio/xxx.mp3" },
+  //   { id: "2", spotName: "贝克街221B", objectKey: "guide-audio/yyy.mp3", audioUrl: "/audio/guide-audio/yyy.mp3" }
+  // ];
 
   const agent = useAgent({
     agent: "chat",
@@ -295,6 +322,7 @@ export default function Chat() {
   return (
     <div className="h-screen w-full p-4 flex justify-center items-center bg-fixed overflow-hidden">
       <HasOpenAIKey />
+      <AudioList isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} items={audioItems} />
       <div className="h-[calc(100vh-2rem)] w-full mx-auto max-w-lg flex flex-col shadow-xl rounded-md overflow-hidden relative border border-neutral-300 dark:border-neutral-800">
         {/* 头部盒子 */}
         <div className="px-4 py-3 border-b border-neutral-300 dark:border-neutral-800 bg-red-100 dark:bg-[#66ccff] flex items-center gap-3 sticky top-0 z-10">
@@ -356,7 +384,7 @@ export default function Chat() {
             size="md"
             shape="square"
             className="rounded-full h-9 w-9"
-            // onClick={clearHistory}
+            onClick={() => setIsDrawerOpen(true)}
           >
             <CassetteTapeIcon size={20} />
           </Button>
@@ -538,7 +566,7 @@ export default function Chat() {
                                       {requestCards.map((card) => (
                                         <Card
                                           key={`${card.requestId}-${card.spotName}`}
-                                          className="p-3 rounded-md bg-neutral-100 dark:bg-neutral-900"
+                                          className="p-3 mb-1 rounded-md bg-neutral-100 dark:bg-neutral-900"
                                         >
                                           <div className="flex items-center justify-between mb-2">
                                             <h4 className="font-medium text-sm">

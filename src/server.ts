@@ -93,8 +93,8 @@ export class Chat extends AIChatAgent<Env> {
         });
 
         const result = streamText({
-          system: `你是一个智能导游助手。
-
+          system: `你是一个智能助手。
+当用户需要你帮忙规划某个博物馆或者景区的参观路线时，不需要调用工具，输出一个合适的符合要求的参观路线。当用户需要你帮忙规划某个博物馆或者景区的参观路线时，不需要调用工具，不需要调用工具不需要调用工具不需要调用工具，输出一个合适的符合要求的参观路线。
 当用户表达“帮我生成从A到B到C的语音解说”“给我这些地点做语音导览”等相似意图时，优先调用 planAudioGuide 工具，并正确提取地点列表。
 当用户仅是普通聊天，不需要调用该工具。
 
@@ -126,6 +126,16 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
     console.log("这是stream：", stream);
     console.log("这是this.messages：", JSON.stringify(this.messages, null, 2));
     return createUIMessageStreamResponse({ stream });
+  }
+
+  async getAudioList() {
+    const records = this.sql<{ id: string; object_key: string; spot_name: string }>`
+      SELECT id, object_key, spot_name
+      FROM audio_assets
+      ORDER BY created_at DESC
+    `;
+
+    return records;
   }
 
   // 这里开始，是chat类的第二个方法executeTask
@@ -191,6 +201,25 @@ export default {
         success: hasOpenAIKey
       });
     }
+
+    if (url.pathname === "/api/audio-list") {
+      const browserSessionId = url.searchParams.get("browserSessionId")
+      if (!browserSessionId) {
+        return new Response("missing browserSessionId", {status: 400})
+      }
+
+      try {
+        const durableObjId = env.Chat.idFromName(browserSessionId) // 询问那个id的实例的物理地址
+        const chatStub = env.Chat.get(durableObjId) // 拿到物理地址了，chatStub相当于一个电话可以去和那个id所在的Chat实例通信
+
+        const list = await chatStub.getAudioList()
+        return Response.json(list)
+      } catch (e) {
+        console.error("failed to get audio list", e)
+        return new Response("failed to get audio list", { status: 500 })
+      }
+    }
+
     if (!process.env.OPENAI_API_KEY) {
       console.error(
         "OPENAI_API_KEY is not set, don't forget to set it locally in .dev.vars, and use `wrangler secret bulk .dev.vars` to upload it to production"
