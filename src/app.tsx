@@ -395,24 +395,27 @@ export default function Chat() {
           {agentMessages.length === 0 && (
             <div className="h-full flex items-center justify-center bg-red-100">
               {/* Card组件在app.tsx里第一次出现，它负责展示无对话情况下的欢迎卡片 */}
-              <Card className="p-6 max-w-md mx-auto bg-neutral-100 dark:bg-neutral-900">
+<Card className="p-6 max-w-md mx-auto bg-neutral-100 dark:bg-neutral-900">
                 <div className="text-center space-y-4">
                   <div className="bg-[#F48120]/10 text-[#F48120] rounded-full p-3 inline-flex">
                     <RobotIcon size={24} />
                   </div>
                   <h3 className="font-semibold text-lg">你好！我是菠萝瑜</h3>
-                  <p className="text-muted-foreground text-sm">
-                    Start a conversation with your AI assistant. Try asking
-                    about:
+                  <p className="text-muted-foreground text-m text-left">
+                    我是你的AI导游，你可以按照任何想要的路线顺序列出景点/展品，让我一键生成各种风格的语音导览系列哦~
                   </p>
-                  <ul className="text-sm text-left space-y-2">
-                    <li className="flex items-center gap-2">
+                  <ul className="text-left space-y-2">
+                    <li className="flex items-center gap-4 text-m">
                       <span className="text-[#F48120]">•</span>
-                      <span>Weather information for any city</span>
+                      <span>例如，你可以尝试以下提示词：</span>
                     </li>
-                    <li className="flex items-center gap-2">
+                    <li className="flex items-center gap-4 text-sm ">
                       <span className="text-[#F48120]">•</span>
-                      <span>Local time in different locations</span>
+                      <span>给我8岁的女儿生成从故宫到颐和园再到圆明园最后到八达岭长城的语音导览，每个大概1000字左右，风格生动活泼简单易懂，称呼听众为“贝贝”。</span>
+                    </li>
+                    <li className="flex items-center gap-4 text-sm ">
+                      <span className="text-[#F48120]">•</span>
+                      <span>我正在参观大英博物馆，请你用英伦风老绅士的口吻给我生成按照如下参观顺序的语音导览：罗塞塔石碑、拉美西斯二世雕像、亚述猎狮浮雕、帕特农神庙雕塑、复活节岛石像、双头蛇马赛克、镀金青铜度母像、大维德花瓶、路易斯西洋棋、凯特贝特木乃伊</span>
                     </li>
                   </ul>
                 </div>
