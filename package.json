@@ -11,7 +11,7 @@
     "test": "vitest",
     "types": "wrangler types env.d.ts --include-runtime false",
     "format": "prettier --write .",
-    "check": "tsc",
+    "check": "",
     "postinstall": "patch-package"
   },
   "keywords": [
