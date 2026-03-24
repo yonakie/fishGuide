@@ -1,237 +1,88 @@
-# 🤖 Chat Agent Starter Kit
 
-![npm i agents command](./npm-agents-banner.svg)
+# 🐟 fishGuide AI 语音导游
 
-<a href="https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/agents-starter"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare"/></a>
+fishGuide 是我自制的基于 AI 的智能语音导游聊天应用，支持用户以聊天的形式，告诉模型想要的参观路线和导览风格，获取个性化的博物馆/景点讲解体验。
 
-A starter template for building AI-powered chat agents using Cloudflare's Agent platform, powered by [`agents`](https://www.npmjs.com/package/agents). This project provides a foundation for creating interactive chat experiences with AI, complete with a modern UI and tool integration capabilities.
+fishGuide is an AI-powered smart audio tour guide. Users can freely input a list of spots/museums they want to visit, specify their preferred tour style, length, and any other requirements. The agent will automatically extract your route spots, reference Wikipedia for introductions, and generate a personalized audio tour in one go.
 
-## Features
+---
 
-- 💬 Interactive chat interface with AI
-- 🛠️ Built-in tool system with human-in-the-loop confirmation
-- 📅 Advanced task scheduling (one-time, delayed, and recurring via cron)
-- 🌓 Dark/Light theme support
-- ⚡️ Real-time streaming responses
-- 🔄 State management and chat history
-- 🎨 Modern, responsive UI
+## 主要功能 | Main Features
 
-## Prerequisites
+- 🗺️ **自由路线定制**：用户可输入任意多个景点/博物馆，系统自动识别并规划参观顺序。
+  
+  **Customizable routes**: Input any number of spots/museums, the system will extract and plan your visit order.
 
-- Cloudflare account
-- OpenAI API key
+- 🎙️ **个性化语音导览生成**：支持自定义导览风格、时长、深度等，AI 会根据你的要求和维基百科等权威资料自动生成讲解音频。
+  
+  **Personalized audio tour**: Specify your preferred style, length, and depth. The AI generates audio guides referencing Wikipedia and your requirements.
 
-## Quick Start
+- 🧑‍💻 **多用户会话与历史音频管理**：基于 sessionId 区分用户，用户可在聊天界面右上角查看和播放所有历史音频。
+  
+  **Multi-user session & audio history**: Each user is identified by sessionId. All previous audio guides are accessible and playable from the chat UI.
 
-1. Create a new project:
+---
 
-```bash
-npx create-cloudflare@latest --template cloudflare/agents-starter
-```
+## 快速开始 | Quick Start
 
-2. Install dependencies:
+1. 安装依赖 Install dependencies:
+   ```bash
+   npm install
+   ```
+2. 配置环境变量 Set up environment variables:
+   在 `.dev.vars` 文件中添加你的 OpenAI API Key，并且在server.ts里设置你使用的模型：
+   ```env
+   OPENAI_API_KEY=your_openai_api_key
+   ```
+3. 本地运行 Run locally:
+   ```bash
+   npm start
+   ```
+4. 部署 Deploy:
+   ```bash
+   npm run deploy
+   ```
 
-```bash
-npm install
-```
+---
 
-3. Set up your environment:
-
-Create a `.dev.vars` file:
-
-```env
-OPENAI_API_KEY=your_openai_api_key
-```
-
-4. Run locally:
-
-```bash
-npm start
-```
-
-5. Deploy:
-
-```bash
-npm run deploy
-```
-
-## Project Structure
+## 项目结构 | Project Structure
 
 ```
-├── src/
-│   ├── app.tsx        # Chat UI implementation
-│   ├── server.ts      # Chat agent logic
-│   ├── tools.ts       # Tool definitions
-│   ├── utils.ts       # Helper functions
-│   └── styles.css     # UI styling
+src/
+  app.tsx        # 聊天界面 Chat UI
+  server.ts      # Agent 逻辑 Agent logic
+  tools.ts       # 工具定义 Tool definitions
+  utils.ts       # 辅助函数 Utilities
+  styles.css     # 样式 Styling
+  components/    # UI 组件库 UI components
 ```
 
-## Customization Guide
+---
 
-### Adding New Tools
+## 后续开发计划 | Roadmap
 
-Add new tools in `tools.ts` using the tool builder:
+- 🏠 **Airbnb 房源智能推荐与价格评估**
+  - 支持一键获取指定城市、地区、房型、人数等特征的 Airbnb 房源
+  - 基于 Inside Airbnb 数据库训练的 XGBoost 模型，自动评估房源价格公允性
+  
+  **Airbnb smart listing & price evaluation**: Fetch Airbnb listings by city, area, room type, and guest count. Evaluate price fairness using an XGBoost model trained on Inside Airbnb data.
 
-```ts
-// Example of a tool that requires confirmation
-const searchDatabase = tool({
-  description: "Search the database for user records",
-  parameters: z.object({
-    query: z.string(),
-    limit: z.number().optional()
-  })
-  // No execute function = requires confirmation
-});
+- 🗺️ **旅游路线智能规划**
+  - 集成谷歌地图 API，自动生成最优旅游路线
+  
+  **Travel route planning**: Integrate Google Maps API for optimal route generation.
 
-// Example of an auto-executing tool
-const getCurrentTime = tool({
-  description: "Get current server time",
-  parameters: z.object({}),
-  execute: async () => new Date().toISOString()
-});
+- 📚 **RAG（检索增强生成）功能（计划中）**
+  - 未来可能支持基于外部知识库的检索增强讲解
+  
+  **RAG-powered explanations (planned)**: Potential support for retrieval-augmented generation from external knowledge bases.
 
-// Scheduling tool implementation
-const scheduleTask = tool({
-  description:
-    "schedule a task to be executed at a later time. 'when' can be a date, a delay in seconds, or a cron pattern.",
-  parameters: z.object({
-    type: z.enum(["scheduled", "delayed", "cron"]),
-    when: z.union([z.number(), z.string()]),
-    payload: z.string()
-  }),
-  execute: async ({ type, when, payload }) => {
-    // ... see the implementation in tools.ts
-  }
-});
-```
+- 💰 **自然语言旅游账本（计划中）**
+  - 未来可能支持用自然语言记账、生成旅游花销报告
+  
+  **Natural language travel ledger (planned)**: Possible support for expense tracking and reporting via natural language.
 
-To handle tool confirmations, add execution functions to the `executions` object:
-
-```typescript
-export const executions = {
-  searchDatabase: async ({
-    query,
-    limit
-  }: {
-    query: string;
-    limit?: number;
-  }) => {
-    // Implementation for when the tool is confirmed
-    const results = await db.search(query, limit);
-    return results;
-  }
-  // Add more execution handlers for other tools that require confirmation
-};
-```
-
-Tools can be configured in two ways:
-
-1. With an `execute` function for automatic execution
-2. Without an `execute` function, requiring confirmation and using the `executions` object to handle the confirmed action. NOTE: The keys in `executions` should match `toolsRequiringConfirmation` in `app.tsx`.
-
-### Use a different AI model provider
-
-The starting [`server.ts`](https://github.com/cloudflare/agents-starter/blob/main/src/server.ts) implementation uses the [`ai-sdk`](https://sdk.vercel.ai/docs/introduction) and the [OpenAI provider](https://sdk.vercel.ai/providers/ai-sdk-providers/openai), but you can use any AI model provider by:
-
-1. Installing an alternative AI provider for the `ai-sdk`, such as the [`workers-ai-provider`](https://sdk.vercel.ai/providers/community-providers/cloudflare-workers-ai) or [`anthropic`](https://sdk.vercel.ai/providers/ai-sdk-providers/anthropic) provider:
-2. Replacing the AI SDK with the [OpenAI SDK](https://github.com/openai/openai-node)
-3. Using the Cloudflare [Workers AI + AI Gateway](https://developers.cloudflare.com/ai-gateway/providers/workersai/#workers-binding) binding API directly
-
-For example, to use the [`workers-ai-provider`](https://sdk.vercel.ai/providers/community-providers/cloudflare-workers-ai), install the package:
-
-```sh
-npm install workers-ai-provider
-```
-
-Add an `ai` binding to `wrangler.jsonc`:
-
-```jsonc
-// rest of file
-  "ai": {
-    "binding": "AI"
-  }
-// rest of file
-```
-
-Replace the `@ai-sdk/openai` import and usage with the `workers-ai-provider`:
-
-```diff
-// server.ts
-// Change the imports
-- import { openai } from "@ai-sdk/openai";
-+ import { createWorkersAI } from 'workers-ai-provider';
-
-// Create a Workers AI instance
-+ const workersai = createWorkersAI({ binding: env.AI });
-
-// Use it when calling the streamText method (or other methods)
-// from the ai-sdk
-- const model = openai("gpt-4o-2024-11-20");
-+ const model = workersai("@cf/deepseek-ai/deepseek-r1-distill-qwen-32b")
-```
-
-Commit your changes and then run the `agents-starter` as per the rest of this README.
-
-### Modifying the UI
-
-The chat interface is built with React and can be customized in `app.tsx`:
-
-- Modify the theme colors in `styles.css`
-- Add new UI components in the chat container
-- Customize message rendering and tool confirmation dialogs
-- Add new controls to the header
-
-### Example Use Cases
-
-1. **Customer Support Agent**
-   - Add tools for:
-     - Ticket creation/lookup
-     - Order status checking
-     - Product recommendations
-     - FAQ database search
-
-2. **Development Assistant**
-   - Integrate tools for:
-     - Code linting
-     - Git operations
-     - Documentation search
-     - Dependency checking
-
-3. **Data Analysis Assistant**
-   - Build tools for:
-     - Database querying
-     - Data visualization
-     - Statistical analysis
-     - Report generation
-
-4. **Personal Productivity Assistant**
-   - Implement tools for:
-     - Task scheduling with flexible timing options
-     - One-time, delayed, and recurring task management
-     - Task tracking with reminders
-     - Email drafting
-     - Note taking
-
-5. **Scheduling Assistant**
-   - Build tools for:
-     - One-time event scheduling using specific dates
-     - Delayed task execution (e.g., "remind me in 30 minutes")
-     - Recurring tasks using cron patterns
-     - Task payload management
-     - Flexible scheduling patterns
-
-Each use case can be implemented by:
-
-1. Adding relevant tools in `tools.ts`
-2. Customizing the UI for specific interactions
-3. Extending the agent's capabilities in `server.ts`
-4. Adding any necessary external API integrations
-
-## Learn More
-
-- [`agents`](https://github.com/cloudflare/agents/blob/main/packages/agents/README.md)
-- [Cloudflare Agents Documentation](https://developers.cloudflare.com/agents/)
-- [Cloudflare Workers Documentation](https://developers.cloudflare.com/workers/)
+---
 
 ## License
 
