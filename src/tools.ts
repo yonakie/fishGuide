@@ -204,11 +204,23 @@ const planAudioGuide = tool({
       .array(z.string())
       .min(1)
       .describe("用户希望解说的地点或展品名称列表"),
-    requirements: z.object({
-      length: z.number().describe("用户提到的讲解词生成长度偏好，比如如果用户说1000字左右，这里就写1000。如果用户没说具体多少字，就说长一点，则设为1500；如果用户说简短即可，则设为500；如果用户没说需要的长度，默认为800"),
-      style: z.string().describe("用户要求的生成风格，比如“幽默风趣”、“讲给小孩听”、“通俗易懂”等。如果用户没提到，就默认为“轻松活泼又不失严谨”"),
-      other: z.string().describe("用户提到的除了length和style外的其它定制化要求")
-    }).describe("用户对语音介绍的生成要求")
+    requirements: z
+      .object({
+        length: z
+          .number()
+          .describe(
+            "用户提到的讲解词生成长度偏好，比如如果用户说1000字左右，这里就写1000。如果用户没说具体多少字，就说长一点，则设为1500；如果用户说简短即可，则设为500；如果用户没说需要的长度，默认为800"
+          ),
+        style: z
+          .string()
+          .describe(
+            "用户要求的生成风格，比如“幽默风趣”、“讲给小孩听”、“通俗易懂”等。如果用户没提到，就默认为“轻松活泼又不失严谨”"
+          ),
+        other: z
+          .string()
+          .describe("用户提到的除了length和style外的其它定制化要求")
+      })
+      .describe("用户对语音介绍的生成要求")
   }),
   execute: async ({ spots, requirements }, options) => {
     // 这里第二个参数options就是我server.ts里传的自定义上下文，不知道咋拿到的，反正就是可以在execute这里拿到！
@@ -264,7 +276,7 @@ const planAudioGuide = tool({
           spotName
         });
 
-        const wikiIntro = await getWikiSummary(spotName,"zh")
+        const wikiIntro = await getWikiSummary(spotName, "zh");
 
         try {
           const { text: intro } = await generateText({

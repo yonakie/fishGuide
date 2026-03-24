@@ -1,4 +1,4 @@
-import { routeAgentRequest, type Schedule } from "agents"; 
+import { routeAgentRequest, type Schedule } from "agents";
 import { getSchedulePrompt } from "agents/schedule";
 import { AIChatAgent } from "agents/ai-chat-agent";
 import {
@@ -19,18 +19,14 @@ import { tools, executions } from "./tools"; // 导入自定义工具和执行�
 // 2. 配置客户端
 const ark = createOpenAI({
   baseURL: "https://ark.cn-beijing.volces.com/api/v3",
-  apiKey: process.env.OPENAI_API_KEY, 
-  compatibility: "compatible" 
-} as any); 
+  apiKey: process.env.OPENAI_API_KEY,
+  compatibility: "compatible"
+} as any);
 
 // 3. 定义模型
 const model = ark.chat("ep-20251101235135-2lkzk"); //使用上面创建的 ark 客户端，调用它的 .chat() 方法, 并传入模型 ID，来创建一个特定的聊天模型实例。
 
-
-
-
 export class Chat extends AIChatAgent<Env> {
-
   async onChatMessage(
     onFinish: StreamTextOnFinishCallback<ToolSet>,
     _options?: { abortSignal?: AbortSignal }
@@ -40,10 +36,8 @@ export class Chat extends AIChatAgent<Env> {
       // ...this.mcp.getAITools()
     };
 
-
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
-
         const cleanedMessages = cleanupMessages(this.messages);
 
         const processedMessages = await processToolCalls({
@@ -65,7 +59,7 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
 `,
 
           messages: await convertToModelMessages(processedMessages),
-          model, 
+          model,
           tools: allTools,
           onFinish: onFinish as unknown as StreamTextOnFinishCallback<
             typeof allTools
@@ -88,7 +82,11 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
   }
 
   async getAudioList() {
-    const records = this.sql<{ id: string; object_key: string; spot_name: string }>`
+    const records = this.sql<{
+      id: string;
+      object_key: string;
+      spot_name: string;
+    }>`
       SELECT id, object_key, spot_name
       FROM audio_assets
       ORDER BY created_at DESC
@@ -115,7 +113,6 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
       }
     ]);
   }
-
 }
 
 // 入口，路由
@@ -137,7 +134,10 @@ export default {
       }
 
       const headers = new Headers();
-      headers.set("content-type", object.httpMetadata?.contentType ?? "audio/mpeg");
+      headers.set(
+        "content-type",
+        object.httpMetadata?.contentType ?? "audio/mpeg"
+      );
       headers.set("cache-control", "public, max-age=31536000, immutable");
       if (object.httpEtag) {
         headers.set("etag", object.httpEtag);
@@ -156,20 +156,20 @@ export default {
     }
 
     if (url.pathname === "/api/audio-list") {
-      const browserSessionId = url.searchParams.get("browserSessionId")
+      const browserSessionId = url.searchParams.get("browserSessionId");
       if (!browserSessionId) {
-        return new Response("missing browserSessionId", {status: 400})
+        return new Response("missing browserSessionId", { status: 400 });
       }
 
       try {
-        const durableObjId = env.Chat.idFromName(browserSessionId) 
-        const chatStub = env.Chat.get(durableObjId)
+        const durableObjId = env.Chat.idFromName(browserSessionId);
+        const chatStub = env.Chat.get(durableObjId);
 
-        const list = await chatStub.getAudioList()
-        return Response.json(list)
+        const list = await chatStub.getAudioList();
+        return Response.json(list);
       } catch (e) {
-        console.error("failed to get audio list", e)
-        return new Response("failed to get audio list", { status: 500 })
+        console.error("failed to get audio list", e);
+        return new Response("failed to get audio list", { status: 500 });
       }
     }
 

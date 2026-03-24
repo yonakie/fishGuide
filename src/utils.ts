@@ -123,21 +123,21 @@ export function cleanupMessages(messages: UIMessage[]): UIMessage[] {
 
 // 生成browserSessionId
 export function getOrCreateBrowserSessionId() {
-  const SESSION_KEY = "my_browser_session_key"
+  const SESSION_KEY = "my_browser_session_key";
 
   if (typeof window === "undefined") {
-    return "default-session"; 
+    return "default-session";
   }
 
-  let browserSessionId = localStorage.getItem(SESSION_KEY)
+  let browserSessionId = localStorage.getItem(SESSION_KEY);
 
   if (!browserSessionId) {
-    browserSessionId = crypto.randomUUID()
-    localStorage.setItem(SESSION_KEY, browserSessionId)
-    console.log(`该浏览器第一次访问瑜的应用，生成id=${browserSessionId}`)
+    browserSessionId = crypto.randomUUID();
+    localStorage.setItem(SESSION_KEY, browserSessionId);
+    console.log(`该浏览器第一次访问瑜的应用，生成id=${browserSessionId}`);
   } else {
-    console.log(`该浏览器以前访问过瑜的应用，获取id=${browserSessionId}`)
+    console.log(`该浏览器以前访问过瑜的应用，获取id=${browserSessionId}`);
   }
 
-  return browserSessionId
+  return browserSessionId;
 }

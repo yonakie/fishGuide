@@ -22,7 +22,7 @@ import { Avatar } from "@/components/avatar/Avatar";
 import { Textarea } from "@/components/textarea/Textarea";
 import { MemoizedMarkdown } from "@/components/memoized-markdown";
 import { ToolInvocationCard } from "@/components/tool-invocation-card/ToolInvocationCard";
-import { AudioList } from '@/components/audio-list/audiolist';
+import { AudioList } from "@/components/audio-list/audiolist";
 
 import {
   GUIDE_DATA_PART,
@@ -95,30 +95,29 @@ export default function Chat() {
   const [showDebug, setShowDebug] = useState(false);
   const [textareaHeight, setTextareaHeight] = useState("auto");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [audioItems, setAudioItems] = useState([])
+  const [audioItems, setAudioItems] = useState([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const myBrowserSessionId = useMemo(() => {
-    return getOrCreateBrowserSessionId()
-  },[]) //依赖数组[]的意思是，只有当这个数组里的变量发生变化时，我才重新去翻localStorage。既然我们传了一个空数组，里面什么都没有，就永远不会发生变化。所以 React 只会在组件第一次加载（Mount）时执行一次
-
+    return getOrCreateBrowserSessionId();
+  }, []); //依赖数组[]的意思是，只有当这个数组里的变量发生变化时，我才重新去翻localStorage。既然我们传了一个空数组，里面什么都没有，就永远不会发生变化。所以 React 只会在组件第一次加载（Mount）时执行一次
 
   // 每次动抽屉，如果是拉开抽屉，就fetch到api那边去，然后后端的fetch入口给路由了，从url拿到browserSessionId，去问对应browserSessionId的实例的物理地址，调用写好的Chat类里面的getAudioList方法，从那个实例的SQLite里拿到
   useEffect(() => {
     if (isDrawerOpen) {
       fetch(`/api/audio-list?browserSessionId=${myBrowserSessionId}`)
-      .then((res) => res.json())
-      .then((data: any) => {
-        const formattedItems = data.map((item: any) => ({
-          id: item.id,
-          spotName: item.spot_name,
-          audioUrl: `/audio/${encodeURIComponent(item.object_key)}`
-        }))
-        setAudioItems(formattedItems)
-      })
-      .catch((e) => console.error("拉取导览库失败", e))
+        .then((res) => res.json())
+        .then((data: any) => {
+          const formattedItems = data.map((item: any) => ({
+            id: item.id,
+            spotName: item.spot_name,
+            audioUrl: `/audio/${encodeURIComponent(item.object_key)}`
+          }));
+          setAudioItems(formattedItems);
+        })
+        .catch((e) => console.error("拉取导览库失败", e));
     }
-  }, [isDrawerOpen])
+  }, [isDrawerOpen]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -137,7 +136,6 @@ export default function Chat() {
     // Save theme preference to localStorage
     localStorage.setItem("theme", theme);
   }, [theme]);
-
 
   // Scroll to bottom on mount
   useEffect(() => {
@@ -296,7 +294,10 @@ export default function Chat() {
     return new Map(
       Array.from(requestMap.entries())
         .sort((a, b) => a[1].order - b[1].order)
-        .map(([requestId, item]) => [requestId, Array.from(item.cards.values())])
+        .map(([requestId, item]) => [
+          requestId,
+          Array.from(item.cards.values())
+        ])
     );
   }, [agentMessages]);
 
@@ -322,7 +323,11 @@ export default function Chat() {
   return (
     <div className="h-screen w-full p-4 flex justify-center items-center bg-fixed overflow-hidden">
       <HasOpenAIKey />
-      <AudioList isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} items={audioItems} />
+      <AudioList
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        items={audioItems}
+      />
       <div className="h-[calc(100vh-2rem)] w-full mx-auto max-w-lg flex flex-col shadow-xl rounded-md overflow-hidden relative border border-neutral-300 dark:border-neutral-800">
         {/* 头部盒子 */}
         <div className="px-4 py-3 border-b border-neutral-300 dark:border-neutral-800 bg-red-100 dark:bg-[#66ccff] flex items-center gap-3 sticky top-0 z-10">
@@ -395,7 +400,7 @@ export default function Chat() {
           {agentMessages.length === 0 && (
             <div className="h-full flex items-center justify-center bg-red-100">
               {/* Card组件在app.tsx里第一次出现，它负责展示无对话情况下的欢迎卡片 */}
-<Card className="p-6 max-w-md mx-auto bg-neutral-100 dark:bg-neutral-900">
+              <Card className="p-6 max-w-md mx-auto bg-neutral-100 dark:bg-neutral-900">
                 <div className="text-center space-y-4">
                   <div className="bg-[#F48120]/10 text-[#F48120] rounded-full p-3 inline-flex">
                     <RobotIcon size={24} />
@@ -411,11 +416,15 @@ export default function Chat() {
                     </li>
                     <li className="flex items-center gap-4 text-sm ">
                       <span className="text-[#F48120]">•</span>
-                      <span>给我8岁的女儿生成从故宫到颐和园再到圆明园最后到八达岭长城的语音导览，每个大概1000字左右，风格生动活泼简单易懂，称呼听众为“贝贝”。</span>
+                      <span>
+                        给我8岁的女儿生成从故宫到颐和园再到圆明园最后到八达岭长城的语音导览，每个大概1000字左右，风格生动活泼简单易懂，称呼听众为“贝贝”。
+                      </span>
                     </li>
                     <li className="flex items-center gap-4 text-sm ">
                       <span className="text-[#F48120]">•</span>
-                      <span>我正在参观大英博物馆，请你用英伦风老绅士的口吻给我生成按照如下参观顺序的语音导览：罗塞塔石碑、拉美西斯二世雕像、亚述猎狮浮雕、帕特农神庙雕塑、复活节岛石像、双头蛇马赛克、镀金青铜度母像、大维德花瓶、路易斯西洋棋、凯特贝特木乃伊</span>
+                      <span>
+                        我正在参观大英博物馆，请你用英伦风老绅士的口吻给我生成按照如下参观顺序的语音导览：罗塞塔石碑、拉美西斯二世雕像、亚述猎狮浮雕、帕特农神庙雕塑、复活节岛石像、双头蛇马赛克、镀金青铜度母像、大维德花瓶、路易斯西洋棋、凯特贝特木乃伊
+                      </span>
                     </li>
                   </ul>
                 </div>
@@ -454,7 +463,11 @@ export default function Chat() {
                   >
                     {/* 头像。如果是ai且是首条消息，则显示ai头像；如果是ai但非首条或是用户，则不需要头像 */}
                     {showAvatar && !isUser ? (
-                      <Avatar username={"瑜"} className="shrink-0" tooltip={"我是瑜"}/>
+                      <Avatar
+                        username={"瑜"}
+                        className="shrink-0"
+                        tooltip={"我是瑜"}
+                      />
                     ) : (
                       !isUser && <div className="w-8" />
                     )}
@@ -652,7 +665,7 @@ export default function Chat() {
           }}
           className="p-3 bg-neutral-50 absolute bottom-0 left-0 right-0 z-10 border-t border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900"
         >
-        {/* form表单内的第一层盒子 */}
+          {/* form表单内的第一层盒子 */}
           <div className="flex items-center gap-2">
             {/* form表单内的第2层盒子，里面包裹了Textarea和按钮区 */}
             <div className="flex-1 relative">
