@@ -18,7 +18,8 @@ let _openai: OpenAI | null = null;
 export function getQdrantClient(): QdrantClient {
   if (!_qdrant) {
     const url = process.env.QDRANT_URL || "http://localhost:6333";
-    _qdrant = new QdrantClient({ url });
+    const apiKey = process.env.QDRANT_API_KEY;
+    _qdrant = new QdrantClient({ url, ...(apiKey ? { apiKey } : {}) });
   }
   return _qdrant;
 }

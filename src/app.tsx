@@ -504,32 +504,38 @@ export default function Chat() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 max-h-[calc(100vh-10rem)] bg-blue-100">
           {agentMessages.length === 0 && (
-            <div className="h-full flex items-center justify-center bg-red-100">
+            <div className="h-full items-center justify-center">
               {/* Card组件在app.tsx里第一次出现，它负责展示无对话情况下的欢迎卡片 */}
-              <Card className="p-6 max-w-md mx-auto bg-neutral-100 dark:bg-neutral-900">
+              <Card className="p-7 max-w-md mx-auto bg-neutral-100 dark:bg-neutral-900">
                 <div className="text-center space-y-4">
-                  <div className="bg-[#F48120]/10 text-[#F48120] rounded-full p-3 inline-flex">
+                  {/* <div className="bg-[#F48120]/10 text-[#F48120] rounded-full p-3 inline-flex">
                     <RobotIcon size={24} />
-                  </div>
+                  </div> */}
                   <h3 className="font-semibold text-lg">你好！我是菠萝瑜</h3>
                   <p className="text-muted-foreground text-m text-left">
-                    我是你的AI导游，你可以按照任何想要的路线顺序列出景点/展品，让我一键生成各种风格的语音导览系列哦~
+                    我是你的AI导游，目前支持伦敦地区的citywalk路线规划、基于伦敦500+景点RAG数据库的导览词一键生成、对应的音频一键生成；如果您不想局限在伦敦，也可以按照任意您提供的旅游路线和风格一键生成语音导览~
                   </p>
                   <ul className="text-left space-y-2">
                     <li className="flex items-center gap-4 text-m">
                       <span className="text-[#F48120]">•</span>
-                      <span>例如，你可以尝试以下提示词：</span>
+                      <span>例如，你可以尝试以下提示词来开始对话：</span>
                     </li>
                     <li className="flex items-center gap-4 text-sm ">
                       <span className="text-[#F48120]">•</span>
                       <span>
-                        给我8岁的女儿生成从故宫到颐和园再到圆明园最后到八达岭长城的语音导览，每个大概1000字左右，风格生动活泼简单易懂，称呼听众为“贝贝”。
+                        帮我规划一条从nutford house到 brick lane的步行路线，历史时期没有偏好，主题没有偏好。
                       </span>
                     </li>
                     <li className="flex items-center gap-4 text-sm ">
                       <span className="text-[#F48120]">•</span>
                       <span>
-                        我正在参观大英博物馆，请你用英伦风老绅士的口吻给我生成按照如下参观顺序的语音导览：罗塞塔石碑、拉美西斯二世雕像、亚述猎狮浮雕、帕特农神庙雕塑、复活节岛石像、双头蛇马赛克、镀金青铜度母像、大维德花瓶、路易斯西洋棋、凯特贝特木乃伊
+                        帮我规划一条从帕丁顿车站到伦敦眼的步行路线，历史时期是维多利亚时代，主题是历史和建筑。
+                      </span>
+                    </li>
+                    <li className="flex items-center gap-4 text-sm ">
+                      <span className="text-[#F48120]">•</span>
+                      <span>
+                        我正在参观大英博物馆，请你用英伦风老绅士的口吻，称呼我为“尊敬的小姐”，给我生成按照如下参观顺序的语音导览：罗塞塔石碑、拉美西斯二世雕像、帕特农神庙雕塑、复活节岛石像、路易斯西洋棋
                       </span>
                     </li>
                   </ul>
@@ -754,7 +760,7 @@ export default function Chat() {
                                               disabled={status === "streaming"}
                                               className="mt-1 text-xs px-3 py-1.5 rounded-md bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                             >
-                                              生成语音 ▶
+                                              为该路线的所有地点生成语音 ▶
                                             </button>
                                           )}
 
@@ -768,7 +774,7 @@ export default function Chat() {
                                           {!card.audioUrl &&
                                             card.status === "done" && (
                                               <p className="text-xs text-muted-foreground">
-                                                解说词已生成，但音频未返回。
+                                                解说词已生成，目前尚无音频。
                                               </p>
                                             )}
 

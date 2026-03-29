@@ -90,7 +90,7 @@ export function RouteCard({ data, onGenerateGuide }: RouteCardProps) {
           onClick={onGenerateGuide}
           className="w-full text-sm py-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-medium transition-colors"
         >
-          为此路线生成语音导览 🎙
+          为此路线生成讲解词
         </button>
       </div>
     </div>

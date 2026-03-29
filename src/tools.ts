@@ -31,7 +31,7 @@ import {
 
 const ark = createOpenAI({
   baseURL: "https://ark.cn-beijing.volces.com/api/v3",
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.ARK_API_KEY,
   compatibility: "compatible"
 } as any);
 
@@ -247,22 +247,22 @@ const routePlan = tool({
       .string()
       .optional()
       .describe(
-        "历史时期偏好，可选：medieval | tudor | stuart | georgian | victorian | edwardian | wwi_wwii | postwar | contemporary | ancient"
+        "历史时期偏好，如果用户说没有偏好或者没提到有历史时期偏好则为空。如果用户提到了历史时期的偏好，在以下时期中匹配1个：medieval | tudor | stuart | georgian | victorian | edwardian | wwi_wwii | postwar | contemporary | ancient"
       ),
     themes: z
       .array(z.string())
       .optional()
       .describe(
-        "主题偏好，可选：royalty | war | religion | science | literature | art | architecture | commerce | politics | nature | sport | mystery | social_history"
+        "主题偏好，如果用户说没有偏好或者没提到有主题偏好则为空。如果用户提到了主题的偏好，在以下中匹配1到多个：royalty | war | religion | science | literature | art | architecture | commerce | politics | nature | sport | mystery | social_history"
       ),
     indoor_outdoor: z
       .string()
       .optional()
-      .describe("室内外偏好，可选：indoor | outdoor | both"),
+      .describe("室内外偏好，如果用户说没有偏好或者没提到有室内外偏好则为空。如果用户提到了室内外的偏好，可选：indoor | outdoor | both"),
     max_spots: z
       .number()
-      .default(5)
-      .describe("最多推荐的途经地标数量，默认 5 个"),
+      .default(10)
+      .describe("最多推荐的途经地标数量，默认 10 个"),
   }),
   execute: async (
     { start, end, historical_period, themes, indoor_outdoor, max_spots },
@@ -295,7 +295,7 @@ const routePlan = tool({
       message: "正在搜索沿途地标…",
     });
 
-    const bbox = computeBoundingBox(startCoord, endCoord, 500);
+    const bbox = computeBoundingBox(startCoord, endCoord, 800);
     const candidates = await searchByBoundingBox(bbox, {
       historical_period,
       themes,
@@ -305,7 +305,7 @@ const routePlan = tool({
     console.log(`[routePlan] bounding box 内共 ${candidates.length} 个地标`);
 
     // ── 第四步：走廊距离过滤 + 评分排序 ──────────────────
-    const CORRIDOR_WIDTH_M = 400;
+    const CORRIDOR_WIDTH_M = 800;
 
     const scored = candidates
       .map((c) => {

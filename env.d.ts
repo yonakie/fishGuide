@@ -23,5 +23,6 @@ declare namespace NodeJS {
 		QDRANT_URL: string;
         OPENAI_EMBEDDING_API_KEY: string;
         GOOGLE_MAPS_API_KEY: string;
+		QDRANT_API_KEY?: string;
 	}
 }
