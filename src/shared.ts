@@ -32,3 +32,38 @@ export type GuideEvent =
       spotName: string;
       message: string;
     };
+
+
+    // ── 路线规划相关类型 ───────────────────────────────────
+export const ROUTE_DATA_PART = "route_event" as const;
+
+export type RouteSpot = {
+  name_en: string;
+  name_zh: string;
+  lat: number;
+  lon: number;
+  rating: number;
+  themes: string[];
+  highlight_zh: string;
+  primary_type: string;
+};
+
+export type RouteData = {
+  startName: string;
+  startLat:  number;
+  startLon:  number;
+  endName:   string;
+  endLat:    number;
+  endLon:    number;
+  spots:         RouteSpot[];
+  totalDistance: string;
+  totalDuration: string;
+  polyline:      string;
+};
+
+
+export type RouteEvent =
+  | { kind: "route_planning"; routeId: string; start: string; end: string }
+  | { kind: "route_searching"; routeId: string; message: string }
+  | { kind: "route_done"; routeId: string; route: RouteData }
+  | { kind: "route_error"; routeId: string; message: string };

@@ -1,6 +1,7 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
+    "ignoreDeprecations": "6.0",
     "types": [
       "@cloudflare/workers-types",
       "@cloudflare/vitest-pool-workers",

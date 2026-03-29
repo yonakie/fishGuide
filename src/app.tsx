@@ -22,12 +22,15 @@ import { Avatar } from "@/components/avatar/Avatar";
 import { Textarea } from "@/components/textarea/Textarea";
 import { MemoizedMarkdown } from "@/components/memoized-markdown";
 import { ToolInvocationCard } from "@/components/tool-invocation-card/ToolInvocationCard";
-import { AudioList } from "@/components/audio-list/audiolist";
+import { AudioList } from "@/components/audio-list/AudioList";
+import { RouteCard } from "@/components/route-map/RouteCard";
+
 
 import {
   GUIDE_DATA_PART,
   type GuideEvent,
-  type GuideSpotStatus
+  type GuideSpotStatus,
+  ROUTE_DATA_PART, type RouteEvent, type RouteData,
 } from "./shared";
 
 // Icon imports
@@ -47,7 +50,7 @@ import { getOrCreateBrowserSessionId } from "./utils";
 // NOTE: this should match the tools that don't have execute functions in tools.ts
 // 如下数组里的tool，必需用户confirm才能调用。typeof tools意思是把这个tools的结构提取成一个类型，keyof是指取这个类型里的keys，外面套括号和[]意思是这个toolsRequiringConfirmation是个数组，元素需要符合()里的规定
 const toolsRequiringConfirmation: (keyof typeof tools)[] = [
-  "getWeatherInformation"
+  // "getWeatherInformation"
 ];
 
 // 导览卡片数据结构的类型定义
@@ -78,6 +81,17 @@ function isGuideDataPart(
   return maybePart.type === `data-${GUIDE_DATA_PART}` && !!maybePart.data;
 }
 
+function isRouteDataPart(
+  part: unknown
+): part is { type: `data-${typeof ROUTE_DATA_PART}`; data: RouteEvent } {
+  return (
+    typeof part === "object" &&
+    part !== null &&
+    "type" in part &&
+    (part as { type: string }).type === `data-${ROUTE_DATA_PART}`
+  );
+}
+
 function getGuideRequestIdFromToolOutput(output: unknown): string | undefined {
   if (!output || typeof output !== "object") return undefined;
   const maybeOutput = output as { requestId?: unknown };
@@ -85,6 +99,19 @@ function getGuideRequestIdFromToolOutput(output: unknown): string | undefined {
     ? maybeOutput.requestId
     : undefined;
 }
+
+// 从 routePlan 的 tool output 里提取 routeId
+function getRouteIdFromToolOutput(output: unknown): string | undefined {
+  if (
+    typeof output === "object" &&
+    output !== null &&
+    "routeId" in output
+  ) {
+    return String((output as { routeId: unknown }).routeId);
+  }
+  return undefined;
+}
+
 
 export default function Chat() {
   const [theme, setTheme] = useState<"dark" | "light">(() => {
@@ -101,6 +128,22 @@ export default function Chat() {
   const myBrowserSessionId = useMemo(() => {
     return getOrCreateBrowserSessionId();
   }, []); //依赖数组[]的意思是，只有当这个数组里的变量发生变化时，我才重新去翻localStorage。既然我们传了一个空数组，里面什么都没有，就永远不会发生变化。所以 React 只会在组件第一次加载（Mount）时执行一次
+
+  // 展开、收起卡片讲解词
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+
+  const toggleCardExpand = useCallback((key: string) => {
+    setExpandedCards((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
+
 
   // 每次动抽屉，如果是拉开抽屉，就fetch到api那边去，然后后端的fetch入口给路由了，从url拿到browserSessionId，去问对应browserSessionId的实例的物理地址，调用写好的Chat类里面的getAudioList方法，从那个实例的SQLite里拿到
   useEffect(() => {
@@ -301,6 +344,23 @@ export default function Chat() {
     );
   }, [agentMessages]);
 
+
+  // 从 agentMessages 里提取所有 route_done 事件，按 routeId 存储
+  const routeDataByRequest = useMemo(() => {
+    const map = new Map<string, RouteData>();
+    for (const message of agentMessages) {
+      for (const part of message.parts ?? []) {
+        if (!isRouteDataPart(part)) continue;
+        const event = part.data;
+        if (event.kind === "route_done") {
+          map.set(event.routeId, event.route);
+        }
+      }
+    }
+    return map;
+  }, [agentMessages]);
+
+
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
@@ -319,6 +379,52 @@ export default function Chat() {
       }
     });
   };
+
+  const handleGenerateAudio = useCallback(
+    async (requestId: string) => {
+      await sendMessage(
+        {
+          role: "user",
+          parts: [
+            {
+              type: "text",
+              text: `请为 requestId="${requestId}" 的讲解词生成语音。`,
+            },
+          ],
+        },
+        { body: {} }
+      );
+    },
+    [sendMessage]
+  );
+
+  const handleGenerateRouteGuide = useCallback(
+    async (routeData: RouteData) => {
+      const spotNames = routeData.spots.map((s) => s.name_en).join("、");
+      await sendMessage(
+        {
+          role: "user",
+          parts: [
+            {
+              type: "text",
+              text:
+                `请为以下路线地标生成讲解词：${spotNames}。` +
+                `路线从${routeData.startName}出发，终点是${routeData.endName}。`,
+            },
+          ],
+        },
+        { body: {} }
+      );
+    },
+    [sendMessage]
+  );
+
+
+  const GUIDE_TOOL_NAMES = new Set([
+    "planAudioGuide",
+    "generateGuideIntros",
+    "generateGuideAudio",
+  ]);
 
   return (
     <div className="h-screen w-full p-4 flex justify-center items-center bg-fixed overflow-hidden">
@@ -541,13 +647,27 @@ export default function Chat() {
                               toolsRequiringConfirmation.includes(
                                 toolName as keyof typeof tools
                               );
-                            const guideRequestId =
-                              toolName === "planAudioGuide"
-                                ? getGuideRequestIdFromToolOutput(part.output)
-                                : undefined;
+                            // const guideRequestId =
+                            //   toolName === "planAudioGuide"
+                            //     ? getGuideRequestIdFromToolOutput(part.output)
+                            //     : undefined;
+                      
+
+                            const guideRequestId = GUIDE_TOOL_NAMES.has(toolName)
+                              ? getGuideRequestIdFromToolOutput(part.output)
+                              : undefined;
                             const requestCards = guideRequestId
                               ? guideCardsByRequest.get(guideRequestId)
                               : undefined;
+
+                            // 路线规划 tool 的数据提取
+                            const routeId = toolName === "routePlan"
+                              ? getRouteIdFromToolOutput(part.output)
+                              : undefined;
+                            const routeData = routeId
+                              ? routeDataByRequest.get(routeId)
+                              : undefined;
+
 
                             return (
                               <div
@@ -575,7 +695,7 @@ export default function Chat() {
                                   }}
                                 />
 
-                                {toolName === "planAudioGuide" &&
+                                {GUIDE_TOOL_NAMES.has(toolName) &&
                                   requestCards &&
                                   requestCards.length > 0 && (
                                     <div className="space-y-2">
@@ -593,11 +713,29 @@ export default function Chat() {
                                             </span>
                                           </div>
 
-                                          {card.intro && (
-                                            <p className="text-sm whitespace-pre-wrap mb-2 line-clamp-6">
-                                              {card.intro}
-                                            </p>
-                                          )}
+                                          
+                                          {card.intro && (() => {
+                                            const cardKey = `${card.requestId}-${card.spotName}`;
+                                            const isExpanded = expandedCards.has(cardKey);
+                                            return (
+                                              <div className="mb-2">
+                                                <p
+                                                  className={`text-sm whitespace-pre-wrap ${
+                                                    isExpanded ? "" : "line-clamp-6"
+                                                  }`}
+                                                >
+                                                  {card.intro}
+                                                </p>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => toggleCardExpand(cardKey)}
+                                                  className="mt-1 text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
+                                                >
+                                                  {isExpanded ? "收起 ▲" : "展开全文 ▼"}
+                                                </button>
+                                              </div>
+                                            );
+                                          })()}
 
                                           {card.audioUrl && (
                                             <audio
@@ -609,13 +747,23 @@ export default function Chat() {
                                             />
                                           )}
 
+                                          {!card.audioUrl && card.status === "done" && (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleGenerateAudio(card.requestId)}
+                                              disabled={status === "streaming"}
+                                              className="mt-1 text-xs px-3 py-1.5 rounded-md bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                            >
+                                              生成语音 ▶
+                                            </button>
+                                          )}
+
                                           {!card.audioUrl &&
-                                            (card.status === "pending" ||
-                                              card.status === "processing") && (
-                                              <p className="text-xs text-muted-foreground">
-                                                音频生成中...
-                                              </p>
-                                            )}
+                                            (card.status === "pending" || card.status === "processing") && (
+                                            <p className="text-xs text-muted-foreground">
+                                              音频生成中...
+                                            </p>
+                                          )}
 
                                           {!card.audioUrl &&
                                             card.status === "done" && (
@@ -634,6 +782,14 @@ export default function Chat() {
                                       ))}
                                     </div>
                                   )}
+                                
+                                {toolName === "routePlan" && routeData && (
+                                  <RouteCard
+                                    data={routeData}
+                                    onGenerateGuide={() => handleGenerateRouteGuide(routeData)}
+                                  />
+                                )}
+
                               </div>
                             );
                           }
