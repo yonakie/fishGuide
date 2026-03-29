@@ -60,18 +60,12 @@ src/
 
 ## 后续开发计划 | Roadmap
 
-- 🏠 **Airbnb 房源智能推荐与价格评估**
-  - 支持一键获取指定城市、地区、房型、人数等特征的 Airbnb 房源
-  - 基于 Inside Airbnb 数据库训练的 XGBoost 模型，自动评估房源价格公允性
-
-  **Airbnb smart listing & price evaluation**: Fetch Airbnb listings by city, area, room type, and guest count. Evaluate price fairness using an XGBoost model trained on Inside Airbnb data.
-
-- 🗺️ **旅游路线智能规划**
+- 🗺️ **旅游路线智能规划：目前已支持伦敦地区的citywalk路线规划**
   - 集成谷歌地图 API，自动生成最优旅游路线
 
   **Travel route planning**: Integrate Google Maps API for optimal route generation.
 
-- 📚 **RAG（检索增强生成）功能（计划中）**
+- 📚 **RAG：目前已经完成伦敦地区RAG数据库的接入**
   - 未来可能支持基于外部知识库的检索增强讲解
 
   **RAG-powered explanations (planned)**: Potential support for retrieval-augmented generation from external knowledge bases.
