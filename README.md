@@ -61,7 +61,8 @@ src/
 ## 后续开发计划 | Roadmap
 
 - 🗺️ **旅游路线智能规划：目前已支持伦敦地区的citywalk路线规划**
-  - 集成谷歌地图 API，自动生成最优旅游路线
+  - 接受历史时期和风格参数，调用RAG，生成最优旅游路线
+  - 集成谷歌地图 API，展示沿途路线
 
   **Travel route planning**: Integrate Google Maps API for optimal route generation.
 
