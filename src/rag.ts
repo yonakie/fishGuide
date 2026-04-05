@@ -3,6 +3,8 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { searchChunksBySpotName } from "./qdrant";
 import type { LandmarkChunk } from "./qdrant";
 
+// 这个文件的全部内容就是，定制generateGuideIntros那个tool需要的函数，吃进去spotName、风格等参数，返回1个景点的intro
+
 // ── 模型配置（与 tools.ts 相同）─────────────────────────
 // 注：两个文件都实例化了同一个模型。
 // 如果将来觉得重复，可以新建 src/models.ts 统一导出。
@@ -37,6 +39,7 @@ const ANGLE_LABELS: Record<string, string> = {
   other:        "其他",
 };
 
+// 把qdrant.ts里那个返回拍过的chunks的返回值拿来，把angle和text俩拼一块儿，拼起来，几个chunk加起来不超过2000字符，多了砍掉
 function buildRagContext(chunks: LandmarkChunk[]): string {
   let context = "";
 
@@ -86,6 +89,7 @@ export async function generateSpotIntro(
   );
 
   // 第二步：组装 prompt
+  // 如果啥chunk都没找到，就触发fallback，返回要求模型按照自己知识介绍的文本。
   const contextSection = ragContext
     ? `\n以下是来自知识库的参考资料，请重点参考：\n${ragContext}`
     : "\n（知识库中暂无该景点资料，请凭你的知识介绍。）";

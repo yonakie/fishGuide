@@ -2,7 +2,7 @@
 import { QdrantClient } from "@qdrant/js-client-rest"; // 没加 type，导入的是“值+类型”，可以用来实例化。
 import OpenAI from "openai";
 import { config } from "dotenv";
-config({ path: "../.dev.vars" });
+config({ path: "../.dev.vars" }); // 环境变量文件不是.env了，特别设置一下
 
 // 声明一些常量
 export const COLLECTION = "london_landmarks";
@@ -89,6 +89,7 @@ export async function embedText(text: string): Promise<number[]> {
 
 // 第二部分：按照spotName搜索地标的chunks们，并且将格式标准化后返回。检索分2步，第一步严格检索，第二步是fallback，如果第一步返回结果不好就把spotName向量化后检索。
 // ── 类型定义 ───────────────────────────────────────────
+// 一共9个字段，其中score是可选的
 export type LandmarkChunk = {
   id: string | number;
   text: string;
@@ -107,11 +108,12 @@ export type SearchFilters = {
 };
 
 // ── 辅助：把 Qdrant 返回的 payload（unknown 类型）转成强类型 ──
+// 注意，这个类型在查询阶段用不到，主要是把返回的point拍成这个形状，然后return出去用。
 function parsePayload(
   payload: Record<string, unknown> | null | undefined
 ): Omit<LandmarkChunk, "id" | "score"> {
   return {
-    text: String(payload?.text ?? ""),
+    text: String(payload?.text ?? ""), // ??代表只有它左边是 null 或 undefined 时，才会使用右边的 ""
     name_en: String(payload?.name_en ?? ""),
     name_zh: String(payload?.name_zh ?? ""),
     landmark_id: String(payload?.landmark_id ?? ""),
@@ -122,6 +124,7 @@ function parsePayload(
 }
 
 // ── 主检索函数 ─────────────────────────────────────────
+// 接受地点名称、过滤条件（默认为空obj）、chunk个数（默认6个），返回一个promise对象，这个promise对象的返回值是个数组[]，里面的每个元素都是一个符合type LandmarkChunk的obj
 export async function searchChunksBySpotName(
   spotName: string,
   filters: SearchFilters = {},
@@ -131,6 +134,7 @@ export async function searchChunksBySpotName(
   const { historical_period, themes } = filters;
 
   // period 和 themes 两步都用得到，先构建好
+  // 写省略号是为了把里面俩玩意的[]给拆了，把里面内容拼一块儿，最后得到的是扁平结构：可能是 []，可能是 [period条件]，可能是 [themes条件]，可能是 [period条件, themes条件]。如果不写 ...，会变成嵌套数组，比如：[ [period条件], [] ]
   const commonConditions = [
     ...(historical_period
       ? [{ key: "historical_period", match: { value: historical_period } }]
@@ -141,6 +145,7 @@ export async function searchChunksBySpotName(
   // ── 第一步：精确名称匹配，不用向量 ───────────────────
   const exactFilter = {
     must: [
+      // must 里的每一项都要满足，should至少满足一个
       // name_en 或 name_zh 与 spotName 完全相等（任一匹配即可）
       {
         should: [
@@ -153,6 +158,7 @@ export async function searchChunksBySpotName(
     ],
   };
 
+  // 注意！payload查询，用的是scroll这个方法！而下面的向量查询用的是query方法
   const scrollResult = await qdrant.scroll(COLLECTION, {
     filter: exactFilter as any, // SDK 类型定义比较严格，此处 as any 是安全的
     limit: 8,
@@ -160,6 +166,7 @@ export async function searchChunksBySpotName(
     with_vector: false,
   });
 
+  // 处理一下拿到的points，把每个的payload都展开
   const exactChunks: LandmarkChunk[] = scrollResult.points.map((p) => ({
     id: p.id,
     ...parsePayload(p.payload as Record<string, unknown>),
@@ -178,12 +185,14 @@ export async function searchChunksBySpotName(
     `[Qdrant] "${spotName}" 精确匹配仅 ${exactChunks.length} 条，触发语义 fallback`
   );
 
+  // 调用embed函数，拿到向量化的spotName
   const vector = await embedText(spotName);
 
   // fallback 阶段不再过滤名称，只保留 period/themes 条件
   const fallbackFilter =
     commonConditions.length > 0 ? { must: commonConditions } : undefined;
 
+  // 注意！向量查询的方法是.query
   const queryResult = await qdrant.query(COLLECTION, {
     query: vector,
     filter: fallbackFilter as any,
@@ -201,6 +210,7 @@ export async function searchChunksBySpotName(
   const seen = new Set<string | number>();
   const merged: LandmarkChunk[] = [];
 
+  // 去重方法：新建一个set，遍历所有points，把id放进去，只有新增id才append这个point到最终的[]里
   for (const chunk of [...exactChunks, ...vectorChunks]) {
     if (!seen.has(chunk.id)) {
       seen.add(chunk.id);
@@ -217,11 +227,13 @@ export async function searchChunksBySpotName(
 
 // 第三部分：给routePlan工具写的位置查询函数
 // ── 类型定义（routePlan 用）────────────────────────────
+// 左上和右下的经纬度
 export type BoundingBox = {
   top_left: { lat: number; lon: number };
   bottom_right: { lat: number; lon: number };
 };
 
+// 支持三个过滤选项
 export type RouteSearchFilters = {
   historical_period?: string;
   themes?: string[];
@@ -246,6 +258,7 @@ export type RouteCandidate = {
 };
 
 // ── 辅助：payload → RouteCandidate ────────────────────
+// 这里和上面的parsepayload选的字段不太一样，你看这里没选text，因为这个只用来路径规划，更关心名字和经纬度，不需要text这个又臭又长的东西。这边写类型方便我们刈除不需要的东西。
 function parseRoutePayload(
   payload: Record<string, unknown> | null | undefined
 ): RouteCandidate {
@@ -271,6 +284,7 @@ function parseRoutePayload(
 }
 
 // ── 地理范围检索 ───────────────────────────────────────
+// 这个目前只负责：接受特定风格、起讫点的经纬度，然后画一个正方形选出这范围内的所有point，然后按照payload里的landmark_id去重，注意不是point的id，后者包含了chunk的index，是每个point独一无二的没法用来去重。
 export async function searchByBoundingBox(
   bbox: BoundingBox,
   filters: RouteSearchFilters = {},
@@ -282,6 +296,7 @@ export async function searchByBoundingBox(
   // 组装所有 must 条件
   const conditions: object[] = [
     // 地理范围是核心条件
+    // qdrant支持接受两个经纬度的obj作为一个bounding box来找之内的point
     {
       key: "geo_point",
       geo_bounding_box: {
