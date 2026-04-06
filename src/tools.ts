@@ -76,7 +76,7 @@ const ensureAudioAssetsTable = (agent: Chat) => {
 
 const ensureGuideIntrosTable = (agent: Chat) => {
   agent.sql`
-    CREATE TABLE IF NOT EXISTS guide_intros (
+    CREATE TABLE IF NOT EXISTS guide_intros ( 
       request_id TEXT NOT NULL,
       spot_name  TEXT NOT NULL,
       intro      TEXT NOT NULL,
@@ -85,7 +85,9 @@ const ensureGuideIntrosTable = (agent: Chat) => {
     )
   `;
 };
-
+// 语法：agent.sql 后面跟的是模板字符串，表示把这段 SQL 发给当前 agent 绑定的 SQLite 执行
+  // 如果不存在guide_intros就创建表，表里的字段包括request_id...到created_at，都是text类型，不能为空NOT NULL。
+  // PRIMARY KEY有点特殊，这个语法是联合主键，意思是1个id下面，同一个spotName只能有1个记录。但同一个 spot_name 在不同 request_id 下可以重复存在。
 
 const getOrCreateAudioAsset = async (
   agent: Chat,
@@ -305,6 +307,13 @@ const routePlan = tool({
     console.log(`[routePlan] bounding box 内共 ${candidates.length} 个地标`);
 
     // ── 第四步：走廊距离过滤 + 评分排序 ──────────────────
+      // 1) 先算每个地标到“起点->终点”中轴线(线段)的最短距离 _corridorDist
+      // 2) 只保留 _corridorDist <= 800m 的地标，避免路线绕太远
+      // 3) 给剩余地标打分：
+      //    ratingScore: 评分归一化到 0~1（无评分=0.5）
+      //    distScore:   离中轴线越近越高（在线上=1，800m边界=0）
+      //    _score = 0.7*ratingScore + 0.3*distScore（口碑优先，其次顺路）
+      // 4) 按 _score 从高到低排序，最后取前 max_spots 个
     const CORRIDOR_WIDTH_M = 800;
 
     const scored = candidates
@@ -345,7 +354,7 @@ const routePlan = tool({
     );
 
     // waypointOrder 是 Google 返回的最优顺序索引，如 [2, 0, 1]
-    // 用它重排 topSpots，让展示顺序与地图一致
+    // 用它重排 topSpots，让展示顺序与地图一致。这个重排方法很有意思，用了map然后数组下标
     const orderedSpots =
       directions.waypointOrder.length > 0
         ? directions.waypointOrder.map((i) => topSpots[i])
@@ -458,6 +467,7 @@ const generateGuideIntros = tool({
       .map((s) => ({ ...s, name: s.name.trim() }))
       .filter((s) => s.name.length > 0);
 
+    // 每调用一次tool，就有1个requestId，哪怕这批10个景点，也每个景点都是这个requestId
     const requestId = crypto.randomUUID();
 
     // 通知前端开始，让它渲染 pending 卡片
@@ -470,9 +480,10 @@ const generateGuideIntros = tool({
     // 确保 SQLite 表存在
     ensureGuideIntrosTable(agent);
 
-    // 并行生成所有景点的讲解词
+    // 并行生成所有景点的讲解词！注意用的promise.all！
     const results = await Promise.all(
       normalizedSpots.map(async (spot) => {
+        // 类型的作用：定义输入规则，然后我们在实际调用它的时候填空即可
         streamGuideEvent(writer, {
           kind: "processing",
           requestId,
@@ -519,6 +530,7 @@ const generateGuideIntros = tool({
       })
     );
 
+    // 搞个数组，表示每个景点的成功失败情况，只影响最终return给模型的消息内容
     const allSucceeded = results.every(Boolean);
     const spotNames = normalizedSpots.map((s) => s.name).join("、");
 
@@ -553,6 +565,7 @@ const generateGuideAudio = tool({
     const { agent } = getCurrentAgent<Chat>();
     if (!agent) throw new Error("Agent context unavailable for generateGuideAudio");
 
+    // 在 server.ts 里调用 streamText 时，手动塞了一个 experimental_context：writer和guideAudioBucket: this.env.GUIDE_AUDIO_BUCKET。在 tools.ts 的工具 execute 函数里，用 options.experimental_context 把这两个值取出来。
     const guideAudioBucket = (
       options.experimental_context as
         | { guideAudioBucket?: R2Bucket }
@@ -585,7 +598,7 @@ const generateGuideAudio = tool({
       };
     }
 
-    // 如果用户只想为部分景点生成语音，过滤
+    // ！这个功能好！如果用户只想为部分景点生成语音，过滤
     const targetRows = spots?.length
       ? rows.filter((r) => spots.includes(r.spot_name))
       : rows;
@@ -598,6 +611,7 @@ const generateGuideAudio = tool({
     }
 
     // ── 并行生成语音 ───────────────────────────────────────
+    // 还是promise.all
     const results = await Promise.all(
       targetRows.map(async ({ spot_name, intro }) => {
         // 先把卡片状态拨回 processing，让用户知道"正在生成语音"
@@ -608,6 +622,7 @@ const generateGuideAudio = tool({
         });
 
         try {
+          // 注意这里需要传入4个参数，除了必须的文本和名字，还需要agent实例和bucket
           const { audioAssetId, audioUrl } = await getOrCreateAudioAsset(
             agent,
             guideAudioBucket,

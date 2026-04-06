@@ -10,7 +10,6 @@ export type DirectionsResult = {
   totalDistance: string;   // 如 "3.2 km"
   totalDuration: string;   // 如 "42 mins"
 };
-
 // ── 常量 ──────────────────────────────────────────────
 const EARTH_RADIUS_M = 6_371_000; // 地球半径（米）
 const DEG_TO_RAD = Math.PI / 180;
@@ -75,6 +74,7 @@ export function perpendicularDistanceToSegment(
 ): number {
   // 以 A 为坐标原点，把三个点投影到米制平面
   // x 轴 = 东西方向，y 轴 = 南北方向
+  // 其实就是以A为原点，计算P点到AB向量上投影的长度，从而计算出垂线交点的坐标，然后计算垂线长度（即向量作差取模）
   const cosLat = Math.cos(a.lat * DEG_TO_RAD);
   const mPerDegLat = 111_111;
   const mPerDegLon = 111_111 * cosLat;
@@ -133,11 +133,13 @@ export async function geocode(
   url.searchParams.set("region", "GB");  // 优先返回英国结果
   url.searchParams.set("key", apiKey);
 
+  // 注意！调用谷歌api用的是fetch
   const res = await fetch(url.toString());
   if (!res.ok) {
     throw new Error(`Geocoding HTTP error: ${res.status} for "${placeName}"`);
   }
 
+  // 注意，.json是异步的，fetch 返回后，响应体是流（stream），拿到 res 只代表响应头和连接状态可用了，body 还需要继续读取。.json() 需要“读取 + 解码 + 解析”，它会把响应体完整读完，再做 JSON.parse，这个过程不是立即完成，所以返回 Promise。
   const data = (await res.json()) as {
     status: string;
     results: Array<{
@@ -178,6 +180,7 @@ export async function getOptimizedRoute(
   url.searchParams.set("key", apiKey);
 
   // optimize:true 告诉 Google 自动重排途经点顺序以缩短总路程
+  // 上一个函数我们通过地名得到了经纬度对象，这里需要传给Google
   if (waypoints.length > 0) {
     const wpStr =
       "optimize:true|" +
@@ -202,13 +205,33 @@ export async function getOptimizedRoute(
     }>;
   };
 
+  // 这个data有点抽象，举个例子，长这样：
+  const dataexample = {
+    "status": "OK",
+    "routes": [
+      {
+        "overview_polyline": {
+          "points": "a~l~Fjk~uOwHJy@P" //  Google 的压缩路径编码字符串,为了省流量，把这些点压缩成一串短字符串，前端解码后就得到一串 [lat, lng] 点，再把这些点喂给地图组件画 polyline，就能显示路线
+        },
+        "waypoint_order": [2, 0, 1],
+        "legs": [
+          { "distance": { "text": "0.8 km", "value": 800 }, "duration": { "text": "10 mins", "value": 600 } },
+          { "distance": { "text": "1.1 km", "value": 1100 }, "duration": { "text": "14 mins", "value": 840 } },
+          { "distance": { "text": "0.9 km", "value": 900 }, "duration": { "text": "12 mins", "value": 720 } },
+          { "distance": { "text": "0.6 km", "value": 600 }, "duration": { "text": "8 mins", "value": 480 } }
+        ]
+      }
+    ]
+  }
+
   if (data.status !== "OK" || data.routes.length === 0) {
     throw new Error(`Directions API failed: status=${data.status}`);
   }
 
   const route = data.routes[0];
 
-  // 把所有 leg 的距离和时长加总
+  // 把所有 leg 的距离和时长加总。reduce 可以理解成“把一堆东西滚动累加成一个结果”，依次遍历每个 leg，把当前累加值 sum 和当前 leg 的 distance.value 相加
+  // 数组.reduce((累加器, 当前项) => 新的累加器, 初始值)
   const totalMeters = route.legs.reduce(
     (sum, leg) => sum + leg.distance.value,
     0

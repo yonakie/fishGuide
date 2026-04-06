@@ -139,6 +139,7 @@ export async function searchChunksBySpotName(
     ...(historical_period
       ? [{ key: "historical_period", match: { value: historical_period } }]
       : []),
+      // 注意！下面的match: {any}意思是OR逻辑，即themes这个数组里的任何一个match上了就行。如果想把historical_period也改成OR逻辑match，需要把上面的value改成match然后把historical_period从string改成array类型，需要改几个地方
     ...(themes?.length ? [{ key: "themes", match: { any: themes } }] : []),
   ];
 
