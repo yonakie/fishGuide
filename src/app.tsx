@@ -356,11 +356,21 @@ export default function Chat() {
 
 
   // 1.6 通用 UI 工具函数
-  // useRef的使用！先用useRef创建一个盒子，然后把这个盒子在jsx里绑定在消息列表底部的占位 <div>，这样我就可以拿到这个盒子滚动到它那里
+  // 1.6.1 滚动到底部
+    // useRef的使用！先用useRef创建一个盒子，然后把这个盒子在jsx里绑定在消息列表底部的占位 <div>，这样我就可以拿到这个盒子滚动到它那里
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); // scrollIntoView() — 让这个 DOM 元素滚动进入视图
   }, []);
 
+  useEffect(() => {
+    scrollToBottom();
+  }, [scrollToBottom]);
+
+  useEffect(() => {
+    agentMessages.length > 0 && scrollToBottom();
+  }, [agentMessages, scrollToBottom]);
+
+  // 1.6.2 整理时间
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
@@ -369,13 +379,27 @@ export default function Chat() {
 
 
 
-  // 1.7 交互处理函数
+  // 1.7 交互处理函数，都是toggle、handle这种把手，用来传给特定按钮之类的触发setState（以及搭配使用的useEffect）
 
   // 1.7.1 主题深浅：按钮按下后setState改变theme值
   const toggleTheme = () => {
     const newTheme = theme === "dark" ? "light" : "dark";
     setTheme(newTheme);
   };
+
+  // 改主题就是从classList里增删tailwind
+  useEffect(() => {
+    if (theme === "dark") {
+      document.documentElement.classList.add("dark");
+      document.documentElement.classList.remove("light");
+    } else {
+      document.documentElement.classList.remove("dark");
+      document.documentElement.classList.add("light");
+    }
+    localStorage.setItem("theme", theme);
+  }, [theme]);
+
+
 
   // 1.7.2 渲染区操作
   // （1）卡片intro展开收起操作
@@ -496,6 +520,7 @@ export default function Chat() {
       fetch(`/api/audio-list?browserSessionId=${myBrowserSessionId}`)
         .then((res) => res.json())
         .then((data: any) => {
+          // 拿到数据之后，用.map整理成标准格式，然后setState，这样react就拿state渲染列表
           const formattedItems = data.map((item: any) => ({
             id: item.id,
             spotName: item.spot_name,
@@ -507,25 +532,8 @@ export default function Chat() {
     }
   }, [isDrawerOpen, myBrowserSessionId]);
 
-  useEffect(() => {
-    if (theme === "dark") {
-      document.documentElement.classList.add("dark");
-      document.documentElement.classList.remove("light");
-    } else {
-      document.documentElement.classList.remove("dark");
-      document.documentElement.classList.add("light");
-    }
-    localStorage.setItem("theme", theme);
-  }, [theme]);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [scrollToBottom]);
-
-  useEffect(() => {
-    agentMessages.length > 0 && scrollToBottom();
-  }, [agentMessages, scrollToBottom]);
-
+  
+  // 自留，用来浏览器console看messages结构
   useEffect(() => {
     // 每次更新 messages 都打印，便于观察消息结构
     console.log("[agentMessages]", agentMessages);
