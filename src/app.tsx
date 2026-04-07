@@ -1,58 +1,76 @@
 /** biome-ignore-all lint/correctness/useUniqueElementIds: it's alright */
 
-// agents是cloudflare的代理SDK，文档见https://developers.cloudflare.com/agents/api-reference/agents-api/，分为两种：
-// （1）server side的Agent class，用来Encapsulates agent logic: connections, state, methods, AI models, error handling。我的后端文件server.ts里用了这个里面的一些东西，不过我的Agent实例不是extends Agent这个class创建的，而是extends了下面的一个叫AiChatAgent的东西。通过某个Agent的class，可以拥有数百万个实例。每个实例都是一个独立运行的微型服务器，从而实现横向扩展。实例通过唯一标识符（用户 ID、电子邮件、工单号等）进行寻址。
-// Q：每个实例对应一个用户，里面可以有好多个不同的属于这个用户的session，还是说每个实例对应一个session、每个用户每创建一个对话就有一个新的实例？
-// 【A】这个不是固定规则，取决于你用什么 ID 去路由实例。同一个 id 永远命中同一个实例；换一个 id 就是新实例，你可以用userId作为ID，也可以用sessionId作为ID。所以两种都可以。要“用户级长期记忆”→ 每用户一个实例。要“会话强隔离、易删除”→ 每会话一个实例。
-// （2）Client-side SDK，一共就仨，AgentClient, useAgent和useAgentChat，是用来建立浏览器和后台的连接的。
+// 第一部分 你的原始学习笔记（已恢复）
+// 1. SDK 概念笔记
+// agents 是 cloudflare 的代理 SDK，文档见 https://developers.cloudflare.com/agents/api-reference/agents-api/，分为两种：
+// （1）server side 的 Agent class，用来封装连接、状态、方法、AI 模型和错误处理。
+        // 你在后端文件 server.ts 里用了其中一些能力；当前实例是 extends AIChatAgent，而不是直接 extends Agent。
+        // 通过某个 Agent class 可以拥有大量实例；每个实例都像一个独立运行的微型服务器，按唯一标识符（用户 ID、邮箱、工单号等）寻址。
+        // Q：每个实例对应一个用户，还是每个会话一个实例？
+        // A：取决于你用什么 ID 路由实例。同一个 id 永远命中同一个实例；换一个 id 就是新实例。
+        //    可以用 userId 做实例级长期记忆，也可以用 sessionId 做会话隔离。
+// （2）Client-side SDK： 主要是 AgentClient、useAgent、useAgentChat，用来建立浏览器和后台连接。
+        // 这里前后端组合是：后端 AIChatAgent + 前端 useAgentChat。
+        // 这套组合可实现：消息自动持久化到 SQLite、断线后流自动恢复、工具调用可在服务端和客户端之间运行。
 
-// 这里我的后端用的是AIChatAgent这个SDK，前端用的是useAgentChat，根据官方文档（），这俩一起可以实现：前者让消息会自动持久化到 SQLite，断开连接后流会自动恢复，工具调用可以在服务器和客户端之间运行；后者是个hook，用来构建用户界面。
-import { useEffect, useState, useRef, useCallback, use, useMemo } from "react";
+// 2. TypeScript 心智笔记
+// var 会提升并初始化为 undefined，提前读取通常不会立刻报错；
+// let/const 也会被提升登记，但在声明前处于 TDZ（暂时性死区），提前访问会报错。
+
+// 第一部分 文件级结构定义
+// 1. 依赖导入
+// 1.1 React 与 Agent SDK
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgent } from "agents/react";
-import { isStaticToolUIPart } from "ai";
 import { useAgentChat } from "agents/ai-react";
+import { isStaticToolUIPart } from "ai";
 import type { UIMessage } from "@ai-sdk/react";
-import type { tools } from "./tools";
 
-// Component imports
-import { Button } from "@/components/button/Button";
-import { Card } from "@/components/card/Card";
-import { Avatar } from "@/components/avatar/Avatar";
-// import { Toggle } from "@/components/toggle/Toggle";
-import { Textarea } from "@/components/textarea/Textarea";
-import { MemoizedMarkdown } from "@/components/memoized-markdown";
-import { ToolInvocationCard } from "@/components/tool-invocation-card/ToolInvocationCard";
-import { AudioList } from "@/components/audio-list/AudioList";
-import { RouteCard } from "@/components/route-map/RouteCard";
-
-
+// 1.2 图标与本地组件
 import {
-  GUIDE_DATA_PART,
-  type GuideEvent,
-  type GuideSpotStatus,
-  ROUTE_DATA_PART, type RouteEvent, type RouteData,
-} from "./shared";
-
-// Icon imports
-import {
-  BugIcon,
+  CassetteTapeIcon,
   MoonIcon,
-  RobotIcon,
-  SunIcon,
-  TrashIcon,
   PaperPlaneTiltIcon,
   StopIcon,
-  CassetteTapeIcon
+  SunIcon,
+  TrashIcon
 } from "@phosphor-icons/react";
+import { Avatar } from "@/components/avatar/Avatar";
+import { Button } from "@/components/button/Button";
+import { Card } from "@/components/card/Card";
+import { MemoizedMarkdown } from "@/components/memoized-markdown";
+import { AudioList } from "@/components/audio-list/AudioList";
+import { RouteCard } from "@/components/route-map/RouteCard";
+import { Textarea } from "@/components/textarea/Textarea";
+import { ToolInvocationCard } from "@/components/tool-invocation-card/ToolInvocationCard";
+
+// 1.3 本地类型与工具
+import type { tools } from "./tools";
+import {
+  GUIDE_DATA_PART,
+  ROUTE_DATA_PART,
+  type GuideEvent,
+  type GuideSpotStatus,
+  type RouteData,
+  type RouteEvent
+} from "./shared";
 import { getOrCreateBrowserSessionId } from "./utils";
 
-// List of tools that require human confirmation
-// NOTE: this should match the tools that don't have execute functions in tools.ts
-// 如下数组里的tool，必需用户confirm才能调用。typeof tools意思是把这个tools的结构提取成一个类型，keyof是指取这个类型里的keys，外面套括号和[]意思是这个toolsRequiringConfirmation是个数组，元素需要符合()里的规定
+
+
+
+
+
+
+
+
+// 2. 常量与类型定义
+// 2.1 需要人工确认的工具列表
 const toolsRequiringConfirmation: (keyof typeof tools)[] = [
   // "getWeatherInformation"
 ];
 
+// 2.2 导览卡片状态结构
 // 导览卡片数据结构的类型定义
 type GuideCardState = {
   requestId: string;
@@ -63,6 +81,7 @@ type GuideCardState = {
   message?: string;
 };
 
+// 2.3 导览状态文本映射
 // 尖括号里的意思是，键必须覆盖 GuideSpotStatus 里的所有状态，值必须是字符串。
 // Record<K, V> 是 TS 内置工具类型，意思是：一个对象，键的类型是 K，值的类型是 V
 const guideStatusText: Record<GuideSpotStatus, string> = {
@@ -72,7 +91,21 @@ const guideStatusText: Record<GuideSpotStatus, string> = {
   error: "生成失败"
 };
 
-// 判断part是否为guideDataPart
+// 2.4 导览相关工具名集合
+const GUIDE_TOOL_NAMES = new Set([
+  "planAudioGuide",
+  "generateGuideIntros",
+  "generateGuideAudio"
+]);
+
+
+
+
+
+
+
+// 3. 顶层工具函数（类型守卫与数据提取）
+// 3.1 判断 part 是否为 guideDataPart
 function isGuideDataPart(
   part: unknown
 ): part is { type: `data-${typeof GUIDE_DATA_PART}`; data: GuideEvent } {
@@ -81,6 +114,7 @@ function isGuideDataPart(
   return maybePart.type === `data-${GUIDE_DATA_PART}` && !!maybePart.data;
 }
 
+// 3.2 判断 part 是否为 routeDataPart
 function isRouteDataPart(
   part: unknown
 ): part is { type: `data-${typeof ROUTE_DATA_PART}`; data: RouteEvent } {
@@ -92,6 +126,7 @@ function isRouteDataPart(
   );
 }
 
+// 3.3 从导览工具输出提取 requestId
 function getGuideRequestIdFromToolOutput(output: unknown): string | undefined {
   if (!output || typeof output !== "object") return undefined;
   const maybeOutput = output as { requestId?: unknown };
@@ -100,138 +135,70 @@ function getGuideRequestIdFromToolOutput(output: unknown): string | undefined {
     : undefined;
 }
 
-// 从 routePlan 的 tool output 里提取 routeId
+// 3.4 从路线工具输出提取 routeId
 function getRouteIdFromToolOutput(output: unknown): string | undefined {
-  if (
-    typeof output === "object" &&
-    output !== null &&
-    "routeId" in output
-  ) {
+  if (typeof output === "object" && output !== null && "routeId" in output) {
     return String((output as { routeId: unknown }).routeId);
   }
   return undefined;
 }
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ++++++++++++++++++第二部分 Chat 主组件+++++++++++++++++++++++
+// 1. 组件入口
 export default function Chat() {
+  // 1.1 基础状态与引用
+    // 主题：组件首次挂载时，读取 localStorage 里的 theme并且赋值给theme作为默认值；如果是这个浏览器第一次打开网页，localstorage里没这个值，就给dark。后续普通的重新渲染不会再执行这个初始化函数；只有组件被卸载后再次挂载，才会重新读一次
   const [theme, setTheme] = useState<"dark" | "light">(() => {
-    // Check localStorage first, default to dark if not found
     const savedTheme = localStorage.getItem("theme");
     return (savedTheme as "dark" | "light") || "dark";
   });
-  const [showDebug, setShowDebug] = useState(false);
+  const [showDebug] = useState(false);
   const [textareaHeight, setTextareaHeight] = useState("auto");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [audioItems, setAudioItems] = useState([]);
+  const [agentInput, setAgentInput] = useState("");
+    // 注意这个展开卡片功能的state是个集合
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+    // 这里的 useRef 主要是拿到一个“稳定的 DOM 引用”，用于滚动到底部。在 JSX 里 <div ref={messagesEndRef} />把这个 ref 绑定到消息列表底部的占位 div，在 scrollToBottom 里调用messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })，这样每次有新消息时，就能平滑滚动到最底部
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+
+
+
+
+
+
+
+  // 1.2 会话标识与 Agent 连接
+  // 依赖数组 [] 的意思是只在组件首次挂载时执行一次。
+  // 这里用于只在首次加载时读取 localStorage 中的 browserSessionId。
   const myBrowserSessionId = useMemo(() => {
     return getOrCreateBrowserSessionId();
-  }, []); //依赖数组[]的意思是，只有当这个数组里的变量发生变化时，我才重新去翻localStorage。既然我们传了一个空数组，里面什么都没有，就永远不会发生变化。所以 React 只会在组件第一次加载（Mount）时执行一次
-
-  // 展开、收起卡片讲解词
-  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
-
-  const toggleCardExpand = useCallback((key: string) => {
-    setExpandedCards((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
   }, []);
-
-
-  // 每次动抽屉，如果是拉开抽屉，就fetch到api那边去，然后后端的fetch入口给路由了，从url拿到browserSessionId，去问对应browserSessionId的实例的物理地址，调用写好的Chat类里面的getAudioList方法，从那个实例的SQLite里拿到
-  useEffect(() => {
-    if (isDrawerOpen) {
-      fetch(`/api/audio-list?browserSessionId=${myBrowserSessionId}`)
-        .then((res) => res.json())
-        .then((data: any) => {
-          const formattedItems = data.map((item: any) => ({
-            id: item.id,
-            spotName: item.spot_name,
-            audioUrl: `/audio/${encodeURIComponent(item.object_key)}`
-          }));
-          setAudioItems(formattedItems);
-        })
-        .catch((e) => console.error("拉取导览库失败", e));
-    }
-  }, [isDrawerOpen]);
-
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, []);
-
-  useEffect(() => {
-    // Apply theme class on mount and when theme changes
-    if (theme === "dark") {
-      document.documentElement.classList.add("dark");
-      document.documentElement.classList.remove("light");
-    } else {
-      document.documentElement.classList.remove("dark");
-      document.documentElement.classList.add("light");
-    }
-
-    // Save theme preference to localStorage
-    localStorage.setItem("theme", theme);
-  }, [theme]);
-
-  // Scroll to bottom on mount
-  useEffect(() => {
-    scrollToBottom();
-  }, [scrollToBottom]);
-
-  const toggleTheme = () => {
-    const newTheme = theme === "dark" ? "light" : "dark";
-    setTheme(newTheme);
-  };
-
-  // const mockAudios = [
-  //   { id: "1", spotName: "海德公园", objectKey: "guide-audio/xxx.mp3", audioUrl: "/audio/guide-audio/xxx.mp3" },
-  //   { id: "2", spotName: "贝克街221B", objectKey: "guide-audio/yyy.mp3", audioUrl: "/audio/guide-audio/yyy.mp3" }
-  // ];
 
   const agent = useAgent({
     agent: "chat",
     name: myBrowserSessionId
   });
 
-  const [agentInput, setAgentInput] = useState("");
-  const handleAgentInputChange = (
-    // 规定event类型，React.ChangeEvent<>意思是它是react的输入变化事件类型也即onChange，尖括号里面的俩东西表示这个事件可能来自这俩html元素中的任意一个，即input或者Textarea
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    setAgentInput(e.target.value);
-  };
-
-  const handleAgentSubmit = async (
-    e: React.FormEvent,
-    extraData: Record<string, unknown> = {}
-  ) => {
-    e.preventDefault();
-    if (!agentInput.trim()) return;
-
-    const message = agentInput;
-    setAgentInput("");
-
-    // Send message to agent
-    await sendMessage(
-      {
-        role: "user",
-        parts: [{ type: "text", text: message }]
-      },
-      {
-        body: extraData
-      }
-    );
-  };
-
+    // 关键一步，通过useAgentChat方法，实现前后端通信，拿到agentMessages的消息们和sendMessage方法，后面用
   const {
-    messages: agentMessages, // 前端拿到的是 useAgentChat 返回的 messages，并重命名成 agentMessages
+    messages: agentMessages,
     addToolResult,
     clearHistory,
     status,
@@ -241,31 +208,35 @@ export default function Chat() {
     agent
   });
 
-  // Scroll to bottom when messages change
-  useEffect(() => {
-    agentMessages.length > 0 && scrollToBottom();
-  }, [agentMessages, scrollToBottom]);
 
+
+
+
+
+
+  // 1.3 消息派生状态，这个废弃了
+    //  当前聊天里，是否有“需要用户先确认”的工具调用还没处理完。我这个代码里用不上，因为我没写需要用户确认的tool
   const pendingToolCallConfirmation = agentMessages.some((m: UIMessage) =>
     m.parts?.some(
       (part) =>
         isStaticToolUIPart(part) &&
         part.state === "input-available" &&
-        // Manual check inside the component
         toolsRequiringConfirmation.includes(
           part.type.replace("tool-", "") as keyof typeof tools
         )
     )
   );
 
-  // 这里每次更新messages都打印一下，看看长啥样。
-  // Q：不是说JS会变量提升吗？为什么我把这个代码写在通过useAgentChat解构获取agentMessages之前，它就报错说我不能在声明变量前使用它？
-  // A：var：会提升并初始化为 undefined，提前读不会立刻报错（但很坑）。let/const：也会“被提升到作用域顶部做登记”，但在声明语句之前处于 TDZ（暂时性死区），提前访问会报错。
-  useEffect(() => {
-    console.log("[agentMessages]", agentMessages);
-  }, [agentMessages]);
 
+
+
+
+
+  // 1.4 两个useMemo的map，整理part.data
+  // （1）结构化导览卡片数据，其实就是把part里的关键部分data抠出来然后整理成一个map
   const guideCardsByRequest = useMemo(() => {
+
+    // 第一步，新建一个requestMap对象，它是一个类似字典的东西，一堆键值对，不过键可以有更多花样比如obj。但是，此处我们用requestId作为键。每个requestId，都对应一个obj，包含order和cards，其中cards也是一个map，以spotName为键，其它part.data里的值作为value
     const requestMap = new Map<
       string,
       {
@@ -281,6 +252,8 @@ export default function Chat() {
       for (const part of parts) {
         if (!isGuideDataPart(part)) continue;
         const event = part.data;
+        // 到这一步为止就是不断遍历然后把part.data从message里抠出来，这是一个长度大概3-5项的obj，包含了所有关键变量，比如data: { kind: "processing", requestId: "req_123", spotName: "故宫" }，如果kind变成done了就加一项intro或者加2项intro和audiourl
+
 
         if (!requestMap.has(event.requestId)) {
           requestMap.set(event.requestId, {
@@ -337,15 +310,11 @@ export default function Chat() {
     return new Map(
       Array.from(requestMap.entries())
         .sort((a, b) => a[1].order - b[1].order)
-        .map(([requestId, item]) => [
-          requestId,
-          Array.from(item.cards.values())
-        ])
+        .map(([requestId, item]) => [requestId, Array.from(item.cards.values())])
     );
   }, [agentMessages]);
 
-
-  // 从 agentMessages 里提取所有 route_done 事件，按 routeId 存储
+  // （2）路线的map整理
   const routeDataByRequest = useMemo(() => {
     const map = new Map<string, RouteData>();
     for (const message of agentMessages) {
@@ -360,44 +329,69 @@ export default function Chat() {
     return map;
   }, [agentMessages]);
 
+/**
+ * 【为啥用useMemo：1-把复杂的筛选逻辑抽离；2-避免因为theme等state的改变导致的Chat组件重新渲染时在jsx那边再跑一遍筛选，因为这个项目的所有state都写在Chat组件上，即使agentMessages不变，也会有其它导致Chat重新渲染的事件】
+ * 1. 为什么不在 JSX 中直接 messages.map？
+ * - 避免性能浪费：数据整理涉及多层遍历、Map 聚合、状态合并与排序。如果在 JSX 中写，组件任何更新都会导致重算。
+ * - 处理流式状态流转：原始消息是流（同一请求有 init -> processing -> done）。直接 map 会导致重复渲染，useMemo 可以提前做好去重与状态更新。
+ * - 保证顺序稳定：在数据层按首次出现的顺序排好，而不是在渲染层混入排序逻辑。
+ * - 关注点分离：数据处理在上方，JSX 只负责“拿最终结果画 UI”，保持代码高可读性。
+ *
+ * 2. 既然useEffect和useRef的hook也有类似功能，为什么不用 useEffect + useState？
+ * useEffect的话是执行顺序问题，Effect 是在渲染之后才执行的。而useMemo是在处理本次渲染的过程中顺溜儿下来执行的。
+ * - 避免多余渲染：纯数据推导不是副作用。用 useEffect 会导致“渲染旧数据 -> 执行 effect -> setState -> 渲染新数据”，多一次渲染且可能出现闪烁。
+ *
+ * 3. 为什么不用 useRef？
+ * - 无法驱动 UI：更新 useRef 不会触发组件重渲染，会导致数据变了但界面没更新。
+ *
+ * 【总结】
+ * - useMemo：同步推导计算结果（纯计算、无副作用） -> 本场景最佳。
+ * - useEffect：处理副作用（如发请求、操作 DOM）。
+ * - useRef：保存不需要触发重渲染的引用。
+ */
+
+
+
+
+
+
+  // 1.6 通用 UI 工具函数
+  // useRef的使用！先用useRef创建一个盒子，然后把这个盒子在jsx里绑定在消息列表底部的占位 <div>，这样我就可以拿到这个盒子滚动到它那里
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); // scrollIntoView() — 让这个 DOM 元素滚动进入视图
+  }, []);
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
-  const handleGuideAudioPlay = (
-    event: React.SyntheticEvent<HTMLAudioElement>
-  ) => {
-    const currentAudio = event.currentTarget;
-    const allGuideAudios = document.querySelectorAll<HTMLAudioElement>(
-      'audio[data-guide-audio="true"]'
-    );
 
-    allGuideAudios.forEach((audio) => {
-      if (audio !== currentAudio && !audio.paused) {
-        audio.pause();
-      }
-    });
+
+
+
+  // 1.7 交互处理函数
+
+  // 1.7.1 主题深浅：按钮按下后setState改变theme值
+  const toggleTheme = () => {
+    const newTheme = theme === "dark" ? "light" : "dark";
+    setTheme(newTheme);
   };
 
-  const handleGenerateAudio = useCallback(
-    async (requestId: string) => {
-      await sendMessage(
-        {
-          role: "user",
-          parts: [
-            {
-              type: "text",
-              text: `请为 requestId="${requestId}" 的讲解词生成语音。`,
-            },
-          ],
-        },
-        { body: {} }
-      );
-    },
-    [sendMessage]
-  );
+  // 1.7.2 渲染区操作
+  // （1）卡片intro展开收起操作
+  const toggleCardExpand = useCallback((key: string) => {
+    setExpandedCards((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
 
+  // （2）在卡片里按按钮一键生成intro操作
   const handleGenerateRouteGuide = useCallback(
     async (routeData: RouteData) => {
       const spotNames = routeData.spots.map((s) => s.name_en).join("、");
@@ -409,9 +403,28 @@ export default function Chat() {
               type: "text",
               text:
                 `请为以下路线地标生成讲解词：${spotNames}。` +
-                `路线从${routeData.startName}出发，终点是${routeData.endName}。`,
-            },
-          ],
+                `路线从${routeData.startName}出发，终点是${routeData.endName}。`
+            }
+          ]
+        },
+        { body: {} }
+      );
+    },
+    [sendMessage]
+  );
+
+  // （3）在卡片里按按钮一键生成audio操作
+  const handleGenerateAudio = useCallback(
+    async (requestId: string) => {
+      await sendMessage(
+        {
+          role: "user",
+          parts: [
+            {
+              type: "text",
+              text: `请为 requestId="${requestId}" 的讲解词生成语音。`
+            }
+          ]
         },
         { body: {} }
       );
@@ -420,12 +433,117 @@ export default function Chat() {
   );
 
 
-  const GUIDE_TOOL_NAMES = new Set([
-    "planAudioGuide",
-    "generateGuideIntros",
-    "generateGuideAudio",
-  ]);
 
+  // 1.7.3 输入框操作
+  // （1）输入时，持续触发setState，改变agentInput的值，让输入框这个受控组件实时渲染改变内容
+  const handleAgentInputChange = (
+    // React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    // 表示该 onChange 事件可能来自 input 或 textarea
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    setAgentInput(e.target.value);
+  };
+
+  // （2）回车发送或者按钮发送时，把输入框setState为空，然后把拿到的agentInput调用sendMessage发给后端模型
+  const handleAgentSubmit = async (
+    e: React.FormEvent,
+    extraData: Record<string, unknown> = {}
+  ) => {
+    e.preventDefault();
+    if (!agentInput.trim()) return;
+
+    const message = agentInput;
+    setAgentInput("");
+
+    await sendMessage(
+      {
+        role: "user",
+        parts: [{ type: "text", text: message }]
+      },
+      {
+        body: extraData
+      }
+    );
+  };
+
+
+
+  // 1.7.4 其它部分：音频按按钮播放，并且停放其它音频
+  const handleGuideAudioPlay = (
+    event: React.SyntheticEvent<HTMLAudioElement>
+  ) => {
+    // 通过event当前的target拿到目前播放的音频
+    const currentAudio = event.currentTarget;
+    const allGuideAudios = document.querySelectorAll<HTMLAudioElement>(
+      'audio[data-guide-audio="true"]'
+    );
+    // 遍历音频列表，如果不是当前音频就给它pause了
+    allGuideAudios.forEach((audio) => {
+      if (audio !== currentAudio && !audio.paused) {
+        audio.pause();
+      }
+    });
+  };
+
+  
+
+  // 1.8 副作用
+  // 每次打开抽屉时拉取导览库音频列表：
+  // 前端请求 /api/audio-list，后端按 browserSessionId 路由到对应实例，
+  // 再由实例从 SQLite 读取并返回音频记录。
+  useEffect(() => {
+    if (isDrawerOpen) {
+      fetch(`/api/audio-list?browserSessionId=${myBrowserSessionId}`)
+        .then((res) => res.json())
+        .then((data: any) => {
+          const formattedItems = data.map((item: any) => ({
+            id: item.id,
+            spotName: item.spot_name,
+            audioUrl: `/audio/${encodeURIComponent(item.object_key)}`
+          }));
+          setAudioItems(formattedItems);
+        })
+        .catch((e) => console.error("拉取导览库失败", e));
+    }
+  }, [isDrawerOpen, myBrowserSessionId]);
+
+  useEffect(() => {
+    if (theme === "dark") {
+      document.documentElement.classList.add("dark");
+      document.documentElement.classList.remove("light");
+    } else {
+      document.documentElement.classList.remove("dark");
+      document.documentElement.classList.add("light");
+    }
+    localStorage.setItem("theme", theme);
+  }, [theme]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [scrollToBottom]);
+
+  useEffect(() => {
+    agentMessages.length > 0 && scrollToBottom();
+  }, [agentMessages, scrollToBottom]);
+
+  useEffect(() => {
+    // 每次更新 messages 都打印，便于观察消息结构
+    console.log("[agentMessages]", agentMessages);
+  }, [agentMessages]);
+
+
+
+
+
+
+
+
+
+
+
+
+
+  // 1.9 终于来到了JSX渲染的return部分！！！
   return (
     <div className="h-screen w-full p-4 flex justify-center items-center bg-fixed overflow-hidden">
       <HasOpenAIKey />
@@ -434,11 +552,11 @@ export default function Chat() {
         onClose={() => setIsDrawerOpen(false)}
         items={audioItems}
       />
+
       <div className="h-[calc(100vh-2rem)] w-full mx-auto max-w-lg flex flex-col shadow-xl rounded-md overflow-hidden relative border border-neutral-300 dark:border-neutral-800">
-        {/* 头部盒子 */}
+        {/* 1.9.1 顶部栏 */}
         <div className="px-4 py-3 border-b border-neutral-300 dark:border-neutral-800 bg-red-100 dark:bg-[#66ccff] flex items-center gap-3 sticky top-0 z-10">
           <div className="flex items-center justify-center h-8 w-8">
-            {/* 左侧图标 */}
             <svg
               width="28px"
               height="28px"
@@ -501,16 +619,12 @@ export default function Chat() {
           </Button>
         </div>
 
-        {/* Messages */}
+        {/* 1.9.2 消息区 */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 max-h-[calc(100vh-10rem)] bg-blue-100">
           {agentMessages.length === 0 && (
             <div className="h-full items-center justify-center">
-              {/* Card组件在app.tsx里第一次出现，它负责展示无对话情况下的欢迎卡片 */}
               <Card className="p-7 max-w-md mx-auto bg-neutral-100 dark:bg-neutral-900">
                 <div className="text-center space-y-4">
-                  {/* <div className="bg-[#F48120]/10 text-[#F48120] rounded-full p-3 inline-flex">
-                    <RobotIcon size={24} />
-                  </div> */}
                   <h3 className="font-semibold text-lg">你好！我是菠萝瑜</h3>
                   <p className="text-muted-foreground text-m text-left">
                     我是你的AI导游，目前支持伦敦地区的citywalk路线规划、基于伦敦500+景点RAG数据库的导览词一键生成、对应的音频一键生成；如果您不想局限在伦敦，也可以按照任意您提供的旅游路线和风格一键生成语音导览~
@@ -545,35 +659,24 @@ export default function Chat() {
           )}
 
           {agentMessages.map((m, index) => {
-            // isUser是个布尔值，判断当前渲染的这条消息是不是user的，是则为true。
             const isUser = m.role === "user";
-            // showAvatar也是个布尔值，判断如果index不为0的话，渲染的上一条消息是不是不等于当前消息，如果不等于则为true，这是为了如果ai连续发送几条消息，后续消息不需要展示头像
             const showAvatar =
               index === 0 || agentMessages[index - 1]?.role !== m.role;
 
             return (
-              // 这里必须有一个key，因为react使用map渲染时，给每个元素都必须加一个独一无二的key，让react知道哪个是哪个
-              // message的最外层大框，主要是放1. bug提示 2.消息
               <div key={m.id}>
-                {/* 如果出现了bug则渲染这个 */}
                 {showDebug && (
-                  // <pre> 是 HTML 的“预格式化文本”标签：会保留空格和换行，适合展示日志、代码、JSON。
                   <pre className="text-xs text-muted-foreground overflow-scroll">
-                    {/* 参数null代表不做字段筛选替换，参数2代表缩进2个空格 */}
                     {JSON.stringify(m, null, 2)}
                   </pre>
                 )}
-                {/* message的第二层框，没啥实际意义，主要是为了让isUser为真时让它里面的整块东西justify-end显示，否则就justify-start显示 */}
-                <div
-                  className={`flex ${isUser ? "justify-end" : "justify-start"}`}
-                >
+
+                <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                   <div
                     className={`flex gap-2 max-w-[85%] ${
-                      // flex-row-reverse意思是让比方说123三个元素按照321靠右排列。flex-row就是123靠左排列。这里和上面的justify的用处区别
                       isUser ? "flex-row-reverse" : "flex-row"
                     }`}
                   >
-                    {/* 头像。如果是ai且是首条消息，则显示ai头像；如果是ai但非首条或是用户，则不需要头像 */}
                     {showAvatar && !isUser ? (
                       <Avatar
                         username={"瑜"}
@@ -583,41 +686,32 @@ export default function Chat() {
                     ) : (
                       !isUser && <div className="w-8" />
                     )}
-                    {/* 消息气泡最外层盒子 */}
+
                     <div>
-                      {/* 消息气泡第二层盒子 */}
                       <div>
-                        {/* 渲染message里的parts们，如果part是text，渲染一版；如果是调用工具，渲染另一种 */}
                         {m.parts?.map((part, i) => {
                           if (part.type === "text") {
                             return (
-                              // biome-ignore lint/suspicious/noArrayIndexKey: immutable index
-                              // 消息气泡第三层盒子，分成2部分，一部分是Card组件，一部分是发送时间。
                               <div key={i}>
-                                {/* Card组件第二次出现，对话框，用户和ai的样式不同 */}
                                 <Card
                                   className={`p-3 rounded-md bg-neutral-100 dark:bg-neutral-900 ${
                                     isUser
-                                      ? "rounded-br-none" // 右下角的圆角去掉，变直角
-                                      : "rounded-bl-none border-assistant-border" // 左下角的圆角去掉，变直角；给 AI 气泡加边框色
+                                      ? "rounded-br-none"
+                                      : "rounded-bl-none border-assistant-border"
                                   } ${
                                     part.text.startsWith("scheduled message")
-                                      ? "border-accent/50" //设置边框颜色为强调色，50%透明度
+                                      ? "border-accent/50"
                                       : ""
                                   } relative`}
                                 >
-                                  {part.text.startsWith(
-                                    "scheduled message"
-                                  ) && (
+                                  {part.text.startsWith("scheduled message") && (
                                     <span className="absolute -top-3 -left-2 text-base">
                                       🕒
                                     </span>
                                   )}
 
                                   <MemoizedMarkdown
-                                    // 用消息 id + 当前 part 索引拼一个唯一标识
                                     id={`${m.id}-${i}`}
-                                    // 渲染part.text。如果开头是“scheduled message: ”，替换成空的也即删掉
                                     content={part.text.replace(
                                       /^scheduled message: /,
                                       ""
@@ -625,14 +719,12 @@ export default function Chat() {
                                   />
                                 </Card>
 
-                                {/* 时间戳。随着气泡的左右也靠左/右展示 */}
                                 <p
                                   className={`text-xs text-muted-foreground mt-1 ${
                                     isUser ? "text-right" : "text-left"
                                   }`}
                                 >
                                   {formatTime(
-                                    // 这里的?是可选操作符，如果不存在metadata则返回undefined，不会报错“Cannot read properties of undefined”
                                     m.metadata?.createdAt
                                       ? new Date(m.metadata.createdAt)
                                       : new Date()
@@ -642,22 +734,13 @@ export default function Chat() {
                             );
                           }
 
-                          // 如果part是工具调用的内容且是ai发来的，就从part
-                          if (
-                            isStaticToolUIPart(part) &&
-                            m.role === "assistant"
-                          ) {
+                          if (isStaticToolUIPart(part) && m.role === "assistant") {
                             const toolCallId = part.toolCallId;
                             const toolName = part.type.replace("tool-", "");
                             const needsConfirmation =
                               toolsRequiringConfirmation.includes(
                                 toolName as keyof typeof tools
                               );
-                            // const guideRequestId =
-                            //   toolName === "planAudioGuide"
-                            //     ? getGuideRequestIdFromToolOutput(part.output)
-                            //     : undefined;
-                      
 
                             const guideRequestId = GUIDE_TOOL_NAMES.has(toolName)
                               ? getGuideRequestIdFromToolOutput(part.output)
@@ -666,18 +749,16 @@ export default function Chat() {
                               ? guideCardsByRequest.get(guideRequestId)
                               : undefined;
 
-                            // 路线规划 tool 的数据提取
-                            const routeId = toolName === "routePlan"
-                              ? getRouteIdFromToolOutput(part.output)
-                              : undefined;
+                            const routeId =
+                              toolName === "routePlan"
+                                ? getRouteIdFromToolOutput(part.output)
+                                : undefined;
                             const routeData = routeId
                               ? routeDataByRequest.get(routeId)
                               : undefined;
 
-
                             return (
                               <div
-                                // biome-ignore lint/suspicious/noArrayIndexKey: using index is safe here as the array is static
                                 key={`${toolCallId}-${i}`}
                                 className="space-y-2"
                               >
@@ -719,29 +800,34 @@ export default function Chat() {
                                             </span>
                                           </div>
 
-                                          
-                                          {card.intro && (() => {
-                                            const cardKey = `${card.requestId}-${card.spotName}`;
-                                            const isExpanded = expandedCards.has(cardKey);
-                                            return (
-                                              <div className="mb-2">
-                                                <p
-                                                  className={`text-sm whitespace-pre-wrap ${
-                                                    isExpanded ? "" : "line-clamp-6"
-                                                  }`}
-                                                >
-                                                  {card.intro}
-                                                </p>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => toggleCardExpand(cardKey)}
-                                                  className="mt-1 text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
-                                                >
-                                                  {isExpanded ? "收起 ▲" : "展开全文 ▼"}
-                                                </button>
-                                              </div>
-                                            );
-                                          })()}
+                                          {card.intro &&
+                                            (() => {
+                                              const cardKey =
+                                                `${card.requestId}-${card.spotName}`;
+                                              const isExpanded = expandedCards.has(cardKey);
+                                              return (
+                                                <div className="mb-2">
+                                                  <p
+                                                    className={`text-sm whitespace-pre-wrap ${
+                                                      isExpanded ? "" : "line-clamp-6"
+                                                    }`}
+                                                  >
+                                                    {card.intro}
+                                                  </p>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      toggleCardExpand(cardKey)
+                                                    }
+                                                    className="mt-1 text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
+                                                  >
+                                                    {isExpanded
+                                                      ? "收起 ▲"
+                                                      : "展开全文 ▼"}
+                                                  </button>
+                                                </div>
+                                              );
+                                            })()}
 
                                           {card.audioUrl && (
                                             <audio
@@ -756,7 +842,9 @@ export default function Chat() {
                                           {!card.audioUrl && card.status === "done" && (
                                             <button
                                               type="button"
-                                              onClick={() => handleGenerateAudio(card.requestId)}
+                                              onClick={() =>
+                                                handleGenerateAudio(card.requestId)
+                                              }
                                               disabled={status === "streaming"}
                                               className="mt-1 text-xs px-3 py-1.5 rounded-md bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                             >
@@ -765,18 +853,18 @@ export default function Chat() {
                                           )}
 
                                           {!card.audioUrl &&
-                                            (card.status === "pending" || card.status === "processing") && (
-                                            <p className="text-xs text-muted-foreground">
-                                              音频生成中...
-                                            </p>
-                                          )}
-
-                                          {!card.audioUrl &&
-                                            card.status === "done" && (
+                                            (card.status === "pending" ||
+                                              card.status === "processing") && (
                                               <p className="text-xs text-muted-foreground">
-                                                解说词已生成，目前尚无音频。
+                                                音频生成中...
                                               </p>
                                             )}
+
+                                          {!card.audioUrl && card.status === "done" && (
+                                            <p className="text-xs text-muted-foreground">
+                                              解说词已生成，目前尚无音频。
+                                            </p>
+                                          )}
 
                                           {card.status === "error" && (
                                             <p className="text-xs text-red-500">
@@ -788,14 +876,15 @@ export default function Chat() {
                                       ))}
                                     </div>
                                   )}
-                                
+
                                 {toolName === "routePlan" && routeData && (
                                   <RouteCard
                                     data={routeData}
-                                    onGenerateGuide={() => handleGenerateRouteGuide(routeData)}
+                                    onGenerateGuide={() =>
+                                      handleGenerateRouteGuide(routeData)
+                                    }
                                   />
                                 )}
-
                               </div>
                             );
                           }
@@ -809,72 +898,63 @@ export default function Chat() {
               </div>
             );
           })}
+
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Area */}
-        {/* 我们可以看到这里有2处submit，一处是输入框按回车的onkeydown事件调用了handleAgentSubmit函数，一处是按submit按钮触发form的onSubmit里的handleAgentSubmit函数 */}
-        {/* 提交逻辑其实放啥元素上都行，反正不涉及DOM取输入框value，因为submit的是setState的agentInput这个变量的值 */}
+        {/* 1.9.3 输入区 */}
+        {/* 提交逻辑可以由 Enter 或按钮触发，最终都走 handleAgentSubmit，并提交状态变量 agentInput。 */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
             handleAgentSubmit(e, {
               annotations: {
                 hello: "world"
-              } // 这是handleAgentSubmit的第二个参数，就是函数里提交的extradata，此处无实际含义仅占位
+              }
             });
-            setTextareaHeight("auto"); // Reset height after submission
+            setTextareaHeight("auto");
           }}
           className="p-3 bg-neutral-50 absolute bottom-0 left-0 right-0 z-10 border-t border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900"
         >
-          {/* form表单内的第一层盒子 */}
           <div className="flex items-center gap-2">
-            {/* form表单内的第2层盒子，里面包裹了Textarea和按钮区 */}
             <div className="flex-1 relative">
-              {/* 输入区 */}
               <Textarea
-                disabled={pendingToolCallConfirmation} // 这是个布尔值，是在上面toolinvocationcard那边定义的，如果为true说明目前需要等待用户批准工具调用，则textarea禁止输入
-                // 禁止输入时，输入框的placeholder不同
+                // 当存在待确认工具调用时，输入区禁用，提示用户先处理确认
+                disabled={pendingToolCallConfirmation}
                 placeholder={
                   pendingToolCallConfirmation
                     ? "Please respond to the tool confirmation above..."
                     : "Send a message..."
                 }
                 className="flex w-full border border-neutral-200 dark:border-neutral-700 px-3 py-2  ring-offset-background placeholder:text-neutral-500 dark:placeholder:text-neutral-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 dark:focus-visible:ring-neutral-700 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-900 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm min-h-[24px] max-h-[calc(75dvh)] overflow-hidden resize-none rounded-2xl text-base! pb-10 dark:bg-neutral-900"
-                // 这是一个受控组件，逻辑是：输入框onchange触发handleAgentInputChange(e)，将e.target.value用setState更新agentInput，而输入框的值被更新为=agentinput，这样写的好处是方便我后面发送完了可以通过setstate('')清空输入框
                 value={agentInput}
                 onChange={(e) => {
                   handleAgentInputChange(e);
-                  // Auto-resize the textarea
-                  // 这边必须写，写了以后我的输入框随着我输入内容的增加而自动变高，而不是高度限制。实现逻辑也是
-                  e.target.style.height = "auto"; //试了一下这个注释掉也不影响这个功能
+                  // 输入时自动增高文本框；发送后通过 setTextareaHeight("auto") 复位高度
+                  e.target.style.height = "auto";
                   e.target.style.height = `${e.target.scrollHeight}px`;
-                  // 为啥需要给高度也绑个state？如果没有它，发送后被撑大的输入框无法复原。我发现我的关键误区在于：清空输入框的setagentInput('')根本不会触发onChange，只有用户的手动修改才会。所以我们需要状态绑定，让发送后清空输入框后，下面的发送逻辑里会setstate一下，导致style={{height: textareaHeight}}的变动，从而实时改变输入框高度。
                   setTextareaHeight(`${e.target.scrollHeight}px`);
                 }}
                 onKeyDown={(e) => {
                   if (
                     e.key === "Enter" &&
                     !e.shiftKey &&
-                    // 判断是不是正在输入法拼字中（比如中文拼音还没选词）
+                    // 输入法拼字阶段（如中文拼音未选词）不触发发送
                     !e.nativeEvent.isComposing
                   ) {
-                    // 阻止浏览器默认行为，避免enter触发什么别的，就按照我写的来
                     e.preventDefault();
-                    // 调用sendMessage提交当前agentInput的值。括号里是因为此处e是键盘事件类型，但是handleAgentSubmit函数里e的类型定义为React.FormEvent（规定成formevent是因为下面的button点击是发消息的主要动作，button的type是submit）
                     handleAgentSubmit(e as unknown as React.FormEvent);
-                    setTextareaHeight("auto"); // Reset height on Enter submission
+                    setTextareaHeight("auto");
                   }
                 }}
-                rows={2} // 设定输入框默认高度为2行。改它可以看到它变高/变扁
-                style={{ height: textareaHeight }} // 让输入框高度随着文字高度改变
+                rows={2}
+                style={{ height: textareaHeight }}
               />
 
-              {/* 发送按钮，分成2种情况，如果当前模型处在输出状况中，就渲染停止按钮，否则渲染发送按钮 */}
               <div className="absolute bottom-0 right-0 p-2 w-fit flex flex-row justify-end">
                 {status === "submitted" || status === "streaming" ? (
                   <button
-                    type="button" // 因为form里的button的type默认是submit，这里写type=button是为了告诉浏览器这只是个普通按钮不触发submit
+                    type="button"
                     onClick={stop}
                     className="inline-flex items-center cursor-pointer justify-center gap-2 whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 rounded-full p-1.5 h-fit border border-neutral-200 dark:border-neutral-800"
                     aria-label="Stop generation"
@@ -900,10 +980,13 @@ export default function Chat() {
   );
 }
 
+// 第三部分 OpenAI Key 校验提示
+// 1. 顶层请求
 const hasOpenAiKeyPromise = fetch("/check-open-ai-key").then((res) =>
   res.json<{ success: boolean }>()
 );
 
+// 2. 提示组件
 function HasOpenAIKey() {
   const hasOpenAiKey = use(hasOpenAiKeyPromise);
 
@@ -971,5 +1054,6 @@ function HasOpenAIKey() {
       </div>
     );
   }
+
   return null;
 }
