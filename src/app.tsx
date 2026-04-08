@@ -416,6 +416,8 @@ export default function Chat() {
   }, []);
 
   // （2）在卡片里按按钮一键生成intro操作
+    // 其实不用useCallback，直接定义这个函数也没问题
+    // 就是按按钮后自动以用户身份sendMessage一条，说我要这个路线的intro
   const handleGenerateRouteGuide = useCallback(
     async (routeData: RouteData) => {
       const spotNames = routeData.spots.map((s) => s.name_en).join("、");
@@ -437,7 +439,7 @@ export default function Chat() {
     [sendMessage]
   );
 
-  // （3）在卡片里按按钮一键生成audio操作
+  // （3）在卡片里按按钮一键生成audio操作，逻辑同上
   const handleGenerateAudio = useCallback(
     async (requestId: string) => {
       await sendMessage(
@@ -553,16 +555,22 @@ export default function Chat() {
 
   // 1.9 终于来到了JSX渲染的return部分！！！
   return (
+    // 最外层盒子，只有1个，编号1
     <div className="h-screen w-full p-4 flex justify-center items-center bg-fixed overflow-hidden">
+
+      {/* 盒子1.1 */}
       <HasOpenAIKey />
+
+      {/* 盒子1.2 音频modal */}
       <AudioList
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         items={audioItems}
       />
 
+      {/* 盒子1.3 主界面，内涵header、消息区和输入区三个区域 */}
       <div className="h-[calc(100vh-2rem)] w-full mx-auto max-w-lg flex flex-col shadow-xl rounded-md overflow-hidden relative border border-neutral-300 dark:border-neutral-800">
-        {/* 1.9.1 顶部栏 */}
+        {/* 1.3.1 顶部栏 */}
         <div className="px-4 py-3 border-b border-neutral-300 dark:border-neutral-800 bg-red-100 dark:bg-[#66ccff] flex items-center gap-3 sticky top-0 z-10">
           <div className="flex items-center justify-center h-8 w-8">
             <svg
@@ -627,8 +635,10 @@ export default function Chat() {
           </Button>
         </div>
 
-        {/* 1.9.2 消息区 */}
+        {/* 1.3.2 消息区 */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 max-h-[calc(100vh-10rem)] bg-blue-100">
+
+          {/* 1.3.2.1 如果没消息，就渲染欢迎界面 */}
           {agentMessages.length === 0 && (
             <div className="h-full items-center justify-center">
               <Card className="p-7 max-w-md mx-auto bg-neutral-100 dark:bg-neutral-900">
@@ -666,25 +676,29 @@ export default function Chat() {
             </div>
           )}
 
+          {/* 1.3.2.2 如果有消息，就map消息，逐个渲染卡片 */}
           {agentMessages.map((m, index) => {
             const isUser = m.role === "user";
             const showAvatar =
               index === 0 || agentMessages[index - 1]?.role !== m.role;
 
             return (
+              // 每条被map的message渲染如下内容，注意需要id作为唯一标识
               <div key={m.id}>
-                {showDebug && (
+                {/* {showDebug && (
                   <pre className="text-xs text-muted-foreground overflow-scroll">
                     {JSON.stringify(m, null, 2)}
                   </pre>
-                )}
+                )} */}
 
+                {/* 外层根据是否是用户发的消息判断样式是左侧or右侧对齐 */}
                 <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                   <div
                     className={`flex gap-2 max-w-[85%] ${
                       isUser ? "flex-row-reverse" : "flex-row"
                     }`}
                   >
+                    {/* 1. 头像，选择性展示 */}
                     {showAvatar && !isUser ? (
                       <Avatar
                         username={"瑜"}
@@ -694,10 +708,12 @@ export default function Chat() {
                     ) : (
                       !isUser && <div className="w-8" />
                     )}
-
+                    
+                    {/* 2. 气泡渲染，这里对单条message进一步map到parts里的单条part，并且根据part的类型是文本/工具调用来拆分渲染路径 */}
                     <div>
                       <div>
                         {m.parts?.map((part, i) => {
+                          // 2.1 如果part的type是文本：简单拿text渲染成普通文字气泡
                           if (part.type === "text") {
                             return (
                               <div key={i}>
@@ -741,7 +757,8 @@ export default function Chat() {
                               </div>
                             );
                           }
-
+                          
+                          // 2.2 如果part是工具调用的信息
                           if (isStaticToolUIPart(part) && m.role === "assistant") {
                             const toolCallId = part.toolCallId;
                             const toolName = part.type.replace("tool-", "");
@@ -770,6 +787,7 @@ export default function Chat() {
                                 key={`${toolCallId}-${i}`}
                                 className="space-y-2"
                               >
+                                {/* 2.2.1 把相关data喂给数据展示卡片，必渲染 */}
                                 <ToolInvocationCard
                                   toolUIPart={part}
                                   toolCallId={toolCallId}
@@ -790,10 +808,12 @@ export default function Chat() {
                                   }}
                                 />
 
+                                {/* 2.2.2 如果是那三个导览tool，包括初版的audio，和新版的intro，audio两个 */}
                                 {GUIDE_TOOL_NAMES.has(toolName) &&
                                   requestCards &&
                                   requestCards.length > 0 && (
                                     <div className="space-y-2">
+                                      {/* map之前useMemo整理好的数据集，对每条信息渲染 */}
                                       {requestCards.map((card) => (
                                         <Card
                                           key={`${card.requestId}-${card.spotName}`}
@@ -808,6 +828,7 @@ export default function Chat() {
                                             </span>
                                           </div>
 
+                                          {/* 2.2.2.1 如果有intro了，渲染intro */}
                                           {card.intro &&
                                             (() => {
                                               const cardKey =
@@ -837,6 +858,7 @@ export default function Chat() {
                                               );
                                             })()}
 
+                                          {/* 2.2.2.2 如果有url了，渲染音频播放卡片 */}
                                           {card.audioUrl && (
                                             <audio
                                               controls
@@ -847,6 +869,7 @@ export default function Chat() {
                                             />
                                           )}
 
+                                          {/* 2.2.2.3 如果还没有url但已有intro，渲染一键生成audio的按钮 */}
                                           {!card.audioUrl && card.status === "done" && (
                                             <button
                                               type="button"
@@ -860,6 +883,7 @@ export default function Chat() {
                                             </button>
                                           )}
 
+                                          {/* 2.2.2.4 如果正在生成音频，状态提示语 */}
                                           {!card.audioUrl &&
                                             (card.status === "pending" ||
                                               card.status === "processing") && (
@@ -868,12 +892,14 @@ export default function Chat() {
                                               </p>
                                             )}
 
+                                          {/* 2.2.2.5 如果有intro无音频，状态提示语 */}
                                           {!card.audioUrl && card.status === "done" && (
                                             <p className="text-xs text-muted-foreground">
                                               解说词已生成，目前尚无音频。
                                             </p>
                                           )}
 
+                                          {/* 2.2.2.6 如果生成失败，渲染失败信息 */}
                                           {card.status === "error" && (
                                             <p className="text-xs text-red-500">
                                               {card.message ??
@@ -885,6 +911,7 @@ export default function Chat() {
                                     </div>
                                   )}
 
+                                {/* 2.2.3 如果是routePlan那个tool */}
                                 {toolName === "routePlan" && routeData && (
                                   <RouteCard
                                     data={routeData}
@@ -910,7 +937,7 @@ export default function Chat() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* 1.9.3 输入区 */}
+        {/* 1.3.3 输入区 */}
         {/* 提交逻辑可以由 Enter 或按钮触发，最终都走 handleAgentSubmit，并提交状态变量 agentInput。 */}
         <form
           onSubmit={(e) => {
