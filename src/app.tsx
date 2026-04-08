@@ -64,6 +64,7 @@ import { getOrCreateBrowserSessionId } from "./utils";
 
 
 
+
 // 2. 常量与类型定义
 // 2.1 需要人工确认的工具列表
 const toolsRequiringConfirmation: (keyof typeof tools)[] = [
@@ -714,7 +715,7 @@ export default function Chat() {
                       <div>
                         {m.parts?.map((part, i) => {
                           // 2.1 如果part的type是文本：简单拿text渲染成普通文字气泡
-                          if (part.type === "text") {
+                          if (part.type === "text" && part.text != "") {
                             return (
                               <div key={i}>
                                 <Card

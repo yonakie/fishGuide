@@ -16,6 +16,10 @@ import { createOpenAI } from "@ai-sdk/openai"; // createOpenAI 是一个工厂�
 import { processToolCalls, cleanupMessages } from "./utils"; // 导入自定义的工具调用处理和消息清理函数
 import { tools, executions } from "./tools"; // 导入自定义工具和执行器
 
+console.log("runtime:", navigator.userAgent);
+console.log("process version:", process.version);
+
+
 // 2. 配置客户端
 const ark = createOpenAI({
   baseURL: "https://ark.cn-beijing.volces.com/api/v3",
