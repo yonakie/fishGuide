@@ -121,7 +121,7 @@ export function cleanupMessages(messages: UIMessage[]): UIMessage[] {
   });
 }
 
-// 生成browserSessionId
+// 生成browserSessionId，这个函数是前后端都用的，因为只有前端能搞到浏览器的localstorage
 export function getOrCreateBrowserSessionId() {
   const SESSION_KEY = "my_browser_session_key";
 
