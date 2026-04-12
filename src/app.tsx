@@ -569,7 +569,7 @@ export default function Chat() {
         items={audioItems}
       />
 
-      {/* 盒子1.3 主界面，内涵header、消息区和输入区三个区域 */}
+      {/* 盒子 1.3 主界面，内涵header、消息区和输入区三个区域 */}
       <div className="h-[calc(100vh-2rem)] w-full mx-auto max-w-lg flex flex-col shadow-xl rounded-md overflow-hidden relative border border-neutral-300 dark:border-neutral-800">
         {/* 1.3.1 顶部栏 */}
         <div className="px-4 py-3 border-b border-neutral-300 dark:border-neutral-800 bg-red-100 dark:bg-[#66ccff] flex items-center gap-3 sticky top-0 z-10">
