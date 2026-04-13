@@ -692,7 +692,7 @@ export default function Chat() {
                   </pre>
                 )} */}
 
-                {/* 外层根据是否是用户发的消息判断样式是左侧or右侧对齐 */}
+                {/* 外层根据是否是用户发的消息判断样式是左or右侧对齐 */}
                 <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                   <div
                     className={`flex gap-2 max-w-[85%] ${
