@@ -43,6 +43,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^3.0.0",
     "@ai-sdk/react": "^3.0.1",
+    "@anthropic-ai/sdk": "^0.89.0",
     "@googlemaps/js-api-loader": "^2.0.2",
     "@phosphor-icons/react": "^2.1.10",
     "@qdrant/js-client-rest": "^1.17.0",
@@ -57,6 +58,7 @@
     "dotenv": "^17.3.1",
     "marked": "^17.0.1",
     "openai": "^6.33.0",
+    "p-limit": "^7.3.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "streamdown": "^1.6.10",

@@ -40,8 +40,8 @@
   },
   
   "limits": {
-    "cpu_ms": 100,
-    "subrequests": 150,
+    "cpu_ms": 10000,
+    "subrequests": 1500,
   },
 
   /**
