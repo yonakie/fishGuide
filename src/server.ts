@@ -28,7 +28,7 @@ const ark = createOpenAI({
 } as any);
 
 // 3. 定义模型
-const arkmodel = ark.chat("ep-20260330041247-vw7wd"); //使用上面创建的 ark 客户端，调用它的 .chat() 方法, 并传入模型 ID，来创建一个特定的聊天模型实例。
+const arkmodel = ark.chat("ep-20260416001057-vxh6w"); //使用上面创建的 ark 客户端，调用它的 .chat() 方法, 并传入模型 ID，来创建一个特定的聊天模型实例。
 
 export class Chat extends AIChatAgent<Env> {
   async onChatMessage(

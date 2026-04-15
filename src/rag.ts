@@ -14,7 +14,7 @@ const ark = createOpenAI({
   compatibility: "compatible",
 } as any);
 
-const guideTextModel = ark.chat("ep-20260330041247-vw7wd");
+const guideTextModel = ark.chat("ep-20260416001057-vxh6w");
 
 // ── 常量 ──────────────────────────────────────────────
 const MAX_CONTEXT_CHARS = 2000;
