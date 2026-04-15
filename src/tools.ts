@@ -4,7 +4,6 @@
  */
 import { tool, type ToolSet } from "ai";
 import { generateText, type UIMessageStreamWriter } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod/v3";
 
 import type { Chat } from "./server";
@@ -13,6 +12,7 @@ import { getCurrentAgent } from "agents";
 import { GUIDE_DATA_PART, type GuideEvent } from "./shared";
 import { getWikiSummary, hashText, synthesizeTtsWithFallback } from "./tts";
 import { generateSpotIntro } from "./rag";
+import { getArkModel } from "./ai-model";
 
 
 import {
@@ -29,13 +29,7 @@ import {
 } from "./shared";
 
 
-const ark = createOpenAI({
-  baseURL: "https://ark.cn-beijing.volces.com/api/v3",
-  apiKey: process.env.ARK_API_KEY,
-  compatibility: "compatible"
-} as any);
-
-const guideTextModel = ark.chat("ep-20260416001057-vxh6w");
+const guideTextModel = getArkModel();
 
 const streamGuideEvent = (
   writer: UIMessageStreamWriter | undefined,

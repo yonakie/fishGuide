@@ -12,23 +12,14 @@ import {
   type ToolSet // 这是一个类型定义，表示一组工具的集合
 } from "ai";
 
-import { createOpenAI } from "@ai-sdk/openai"; // createOpenAI 是一个工厂函数，从 ai-sdk/openai 包中导入，用于创建自定义配置的 OpenAI 客户端实例
+import { getArkModel } from "./ai-model";
 import { processToolCalls, cleanupMessages } from "./utils"; // 导入自定义的工具调用处理和消息清理函数
 import { tools, executions } from "./tools"; // 导入自定义工具和执行器
 
 console.log("runtime:", navigator.userAgent);
 console.log("process version:", process.version);
 
-
-// 2. 配置客户端
-const ark = createOpenAI({
-  baseURL: "https://ark.cn-beijing.volces.com/api/v3",
-  apiKey: process.env.ARK_API_KEY,
-  compatibility: "compatible"
-} as any);
-
-// 3. 定义模型
-const arkmodel = ark.chat("ep-20260416001057-vxh6w"); //使用上面创建的 ark 客户端，调用它的 .chat() 方法, 并传入模型 ID，来创建一个特定的聊天模型实例。
+const arkmodel = getArkModel();
 
 export class Chat extends AIChatAgent<Env> {
   async onChatMessage(

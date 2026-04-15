@@ -1,20 +1,11 @@
 import { generateText } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
 import { searchChunksBySpotName } from "./qdrant";
 import type { LandmarkChunk } from "./qdrant";
+import { getArkModel } from "./ai-model";
 
 // 这个文件的全部内容就是，定制generateGuideIntros那个tool需要的函数，吃进去spotName、风格等参数，返回1个景点的intro
 
-// ── 模型配置（与 tools.ts 相同）─────────────────────────
-// 注：两个文件都实例化了同一个模型。
-// 如果将来觉得重复，可以新建 src/models.ts 统一导出。
-const ark = createOpenAI({
-  baseURL: "https://ark.cn-beijing.volces.com/api/v3",
-  apiKey: process.env.ARK_API_KEY,
-  compatibility: "compatible",
-} as any);
-
-const guideTextModel = ark.chat("ep-20260416001057-vxh6w");
+const guideTextModel = getArkModel();
 
 // ── 常量 ──────────────────────────────────────────────
 const MAX_CONTEXT_CHARS = 2000;

@@ -100,3 +100,75 @@ export function buildCompactedMessages(
 export function shouldCompact(compactedLength: number): boolean {
   return compactedLength > THRESHOLD;
 }
+
+
+
+// ============= Step 3: 增量摘要 =============
+
+/**
+ * 增量摘要：把"旧摘要 + 新增段落"压成"新摘要"
+ *
+ * 调用约定：调用方已经判断过 shouldCompact() === true
+ *
+ * @param model       用于摘要的 LLM（通常传 server.ts 里的 arkmodel）
+ * @param messages    当前完整的 this.messages
+ * @param oldCache    上一次的摘要缓存，null 表示首次压缩
+ * @returns 新的 SummaryCache
+ */
+export async function performCompaction(
+  model: LanguageModel,
+  messages: UIMessage[],
+  oldCache: SummaryCache | null
+): Promise<SummaryCache> {
+  const newUpTo = messages.length - KEEP_RECENT;
+  const oldUpTo = oldCache?.summarizedUpToIndex ?? 0;
+
+  // 安全检查：不应该发生，但防御
+  if (newUpTo <= oldUpTo) {
+    throw new Error(
+      `performCompaction: newUpTo (${newUpTo}) <= oldUpTo (${oldUpTo})，` +
+      `不需要压缩却被调用了`
+    );
+  }
+
+  // 拼摘要原料
+  const newSegmentText = messagesToPlainText(messages.slice(oldUpTo, newUpTo));
+
+  const materials = oldCache
+    ? `【之前的摘要】\n${oldCache.summaryText}\n\n【新增对话段落】\n${newSegmentText}`
+    : `【对话内容】\n${newSegmentText}`;
+
+  const prompt = `你是一个对话压缩助手。以下是用户与伦敦导游 AI 之间的对话历史（可能含有之前的压缩摘要）。请将其压缩为一段中文摘要，不超过 400 字。
+
+【必须保留的信息】
+1. 用户的核心意图和已明确表达的偏好：起点/终点、历史时期、主题、途经点数量、讲解词风格等
+2. 已调用过的工具及关键产出：
+   - 路线规划：必须保留 routeId、起点、终点、途经地标的完整英文名列表
+   - 讲解词生成：必须保留 requestId、涉及的地标英文名列表
+   - 语音生成：必须保留对应的地标和音频信息
+3. AI 对用户提出但尚未完成的事项或建议
+4. 任何后续对话可能引用到的具体事实（日期、数字、ID 等）
+
+【禁止】
+- 不要编造不存在的信息
+- 不需要保留已生成讲解词的详细内容，力求简洁
+- 不要保留礼貌用语、寒暄、情绪性表达
+- 不要保留已经被后续操作覆盖或废弃的信息
+- 不要出现任何 markdown 格式（标题、列表符号等），输出纯文本
+
+【输入】
+${materials}
+
+【输出】
+直接输出摘要正文，不要任何前缀或解释。`;
+
+  const { text } = await generateText({
+    model,
+    prompt
+  });
+
+  return {
+    summaryText: text.trim(),
+    summarizedUpToIndex: newUpTo
+  };
+}
