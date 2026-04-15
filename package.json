@@ -12,7 +12,9 @@
     "types": "wrangler types env.d.ts --include-runtime false",
     "format": "prettier --write .",
     "check": "",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "eval": "curl -sf -X POST http://localhost:8787/api/eval/run -H \"x-eval-auth: $EVAL_TOKEN\"",
+    "eval:set-baseline": "curl -sf -X POST http://localhost:8787/api/eval/set-baseline -H \"x-eval-auth: $EVAL_TOKEN\""
   },
   "keywords": [
     "cloudflare",
