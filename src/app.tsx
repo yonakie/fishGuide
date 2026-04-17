@@ -144,6 +144,16 @@ function getRouteIdFromToolOutput(output: unknown): string | undefined {
   return undefined;
 }
 
+function getGuideRequestIdFromMessage(message: UIMessage): string | undefined {
+  for (const part of message.parts ?? []) {
+    if (isGuideDataPart(part)) {
+      return part.data.requestId;
+    }
+  }
+
+  return undefined;
+}
+
 
 
 
@@ -714,6 +724,9 @@ export default function Chat() {
                     <div>
                       <div>
                         {m.parts?.map((part, i) => {
+                          const guideRequestIdFromMessage =
+                            getGuideRequestIdFromMessage(m);
+
                           // 2.1 如果part的type是文本：简单拿text渲染成普通文字气泡
                           if (part.type === "text" && part.text != "") {
                             return (
@@ -769,7 +782,8 @@ export default function Chat() {
                               );
 
                             const guideRequestId = GUIDE_TOOL_NAMES.has(toolName)
-                              ? getGuideRequestIdFromToolOutput(part.output)
+                              ? getGuideRequestIdFromToolOutput(part.output) ??
+                                guideRequestIdFromMessage
                               : undefined;
                             const requestCards = guideRequestId
                               ? guideCardsByRequest.get(guideRequestId)
@@ -889,7 +903,7 @@ export default function Chat() {
                                             (card.status === "pending" ||
                                               card.status === "processing") && (
                                               <p className="text-xs text-muted-foreground">
-                                                音频生成中...
+                                                生成中...
                                               </p>
                                             )}
 

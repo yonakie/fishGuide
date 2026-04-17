@@ -2,7 +2,10 @@
 import { QdrantClient } from "@qdrant/js-client-rest"; // 没加 type，导入的是“值+类型”，可以用来实例化。
 import OpenAI from "openai";
 import { config } from "dotenv";
-config({ path: "../.dev.vars" }); // 环境变量文件不是.env了，特别设置一下
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+const __dirname = dirname(fileURLToPath(import.meta.url));
+config({ path: resolve(__dirname, "../.dev.vars") }); // 以项目根目录为基准加载，避免误读到上级目录
 
 // 声明一些常量
 export const COLLECTION = "london_landmarks";
@@ -18,6 +21,11 @@ let _openai: OpenAI | null = null;
 export function getQdrantClient(): QdrantClient {
   if (!_qdrant) {
     const url = process.env.QDRANT_URL || "http://localhost:6333";
+    if (!process.env.QDRANT_URL) {
+      console.warn(
+        "[Qdrant] QDRANT_URL is not set, fallback to http://localhost:6333"
+      );
+    }
     const apiKey = process.env.QDRANT_API_KEY;
     _qdrant = new QdrantClient({ url, ...(apiKey ? { apiKey } : {}) });
   }

@@ -16,12 +16,25 @@ import { getArkModel } from "./ai-model";
 import { processToolCalls, cleanupMessages } from "./utils"; // 导入自定义的工具调用处理和消息清理函数
 import { tools, executions } from "./tools"; // 导入自定义工具和执行器
 
+// 和memory相关的函数
+import {
+  loadSummaryCache,
+  saveSummaryCache,
+  clearSummaryCache,
+  buildCompactedMessages,
+  shouldCompact,
+  performCompaction
+} from "./memory";
+
 console.log("runtime:", navigator.userAgent);
 console.log("process version:", process.version);
 
 const arkmodel = getArkModel();
 
 export class Chat extends AIChatAgent<Env> {
+  /** 并发保护：同一 DO 实例中同时只允许一次压缩 */
+  private _compacting = false;
+
   async onChatMessage(
     onFinish: StreamTextOnFinishCallback<ToolSet>,
     _options?: { abortSignal?: AbortSignal }
@@ -42,6 +55,68 @@ export class Chat extends AIChatAgent<Env> {
           executions
         });
 
+        // ============= Memory: 派生 compacted 视图 & 按需压缩 =============
+        let summaryCache = await loadSummaryCache(this.ctx.storage);
+
+        // 历史消息已被清空/重置时，丢弃旧摘要缓存，避免出现陈旧的 summarizedUpToIndex。
+        if (
+          summaryCache &&
+          summaryCache.summarizedUpToIndex > processedMessages.length
+        ) {
+          await clearSummaryCache(this.ctx.storage);
+          summaryCache = null;
+        }
+
+        let compacted = buildCompactedMessages(processedMessages, summaryCache);
+
+        console.log(
+          `[memory] messages=${processedMessages.length}, ` +
+          `compacted=${compacted.length}, ` +
+          `summarizedUpToIndex=${summaryCache?.summarizedUpToIndex ?? 0}`
+        );
+
+        if (shouldCompact(compacted.length) && !this._compacting) {
+          this._compacting = true;
+          writer.write({
+            type: "data-compact_event",
+            data: { kind: "start" },
+            transient: true
+          } as any);
+
+          try {
+            console.log("[memory] compacting...");
+            const newCache = await performCompaction(
+              arkmodel,
+              processedMessages,
+              summaryCache
+            );
+            await saveSummaryCache(this.ctx.storage, newCache);
+            compacted = buildCompactedMessages(processedMessages, newCache);
+
+            console.log(
+              `[memory] compacted done. new summarizedUpToIndex=${newCache.summarizedUpToIndex}, ` +
+              `new compacted length=${compacted.length}`
+            );
+
+            writer.write({
+              type: "data-compact_event",
+              data: { kind: "done" },
+              transient: true
+            } as any);
+          } catch (e) {
+            console.error("[memory] compact failed", e);
+            writer.write({
+              type: "data-compact_event",
+              data: { kind: "failed" },
+              transient: true
+            } as any);
+            // compacted 保持未压缩版本，不阻塞主流程
+          } finally {
+            this._compacting = false;
+          }
+        }
+        // =================================================================
+
         const result = streamText({
           system: `你是一个智能助手。
 当用户需要你帮忙规划伦敦的路线时，调用routePlan工具，输出一个合适的符合要求的参观路线。
@@ -55,7 +130,7 @@ ${getSchedulePrompt({ date: new Date() })}
 If the user asks to schedule a task, use the schedule tool to schedule the task.
 `,
 
-          messages: await convertToModelMessages(processedMessages),
+          messages: await convertToModelMessages(compacted),
           model: arkmodel,
           tools: allTools,
           onFinish: onFinish as unknown as StreamTextOnFinishCallback<
@@ -68,13 +143,13 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
           stopWhen: stepCountIs(10)
         });
 
-        console.log("这是result：", result);
+        // console.log("这是result：", result);
         writer.merge(result.toUIMessageStream());
       }
     });
 
-    console.log("这是stream：", stream);
-    console.log("这是this.messages：", JSON.stringify(this.messages, null, 2));
+    // console.log("这是stream：", stream);
+    // console.log("这是this.messages：", JSON.stringify(this.messages, null, 2));
     return createUIMessageStreamResponse({ stream });
   }
 

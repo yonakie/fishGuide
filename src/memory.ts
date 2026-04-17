@@ -172,3 +172,64 @@ ${materials}
     summarizedUpToIndex: newUpTo
   };
 }
+
+
+
+
+// ============= Step 4: 持久化 =============
+
+/** 存储 key，固定不变 */
+const SUMMARY_CACHE_KEY = "summaryCache";
+
+/**
+ * 只约束我们用到的三个方法
+ * 这个 interface 匹配 Cloudflare DurableObjectStorage 和其他 KV-like 存储
+ */
+interface CacheStorage {
+  get<T = unknown>(key: string): Promise<T | undefined>;
+  put<T = unknown>(key: string, value: T): Promise<void>;
+  delete(key: string): Promise<boolean>;
+}
+
+/**
+ * 从持久化存储读取摘要缓存
+ * 首次调用或从未压缩过 → 返回 null
+ */
+export async function loadSummaryCache(
+  storage: CacheStorage
+): Promise<SummaryCache | null> {
+  const cache = await storage.get<SummaryCache>(SUMMARY_CACHE_KEY);
+  return cache ?? null;
+}
+
+/**
+ * 把摘要缓存写回持久化存储
+ */
+export async function saveSummaryCache(
+  storage: CacheStorage,
+  cache: SummaryCache
+): Promise<void> {
+  await storage.put(SUMMARY_CACHE_KEY, cache);
+}
+
+/**
+ * 清除摘要缓存（未来如果加"清空对话"功能会用到）
+ */
+export async function clearSummaryCache(
+  storage: CacheStorage
+): Promise<void> {
+  await storage.delete(SUMMARY_CACHE_KEY);
+}
+
+// 设计说明
+// 1. AgentWithStorage 极简接口
+    // 不从 agents/ai-chat-agent import 类型，只约束"有 ctx.storage 三件套"。好处：
+    // - 测试时可以传 mock
+    // - 以后换 Agent 基类不受影响
+    // - memory.ts 保持不依赖框架
+// 2. 用 ctx.storage 而非 this.sql
+    // 你现在代码里 getAudioList 用的是 this.sql（SQLite API）。但对于单键值，ctx.storage 是 KV 接口，更轻：不建表、不写 schema、get/put/delete 就够了。两者底层都是 DO storage，不冲突。
+// 3. get 返回 undefined 归一化为 null
+    // DO 的 storage.get 在 key 不存在时返回 undefined。我们内部协议用 null 表示"没有缓存"，归一化一下调用方不用关心这个差异。
+// 4. 序列化
+    // DO storage 支持结构化数据，SummaryCache 是纯 JSON（string + number），直接 put 就行，不用手动 JSON.stringify。

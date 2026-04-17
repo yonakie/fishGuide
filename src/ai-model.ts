@@ -1,6 +1,6 @@
 import { createOpenAI } from "@ai-sdk/openai";
 
-export const DEFAULT_ARK_MODEL_ID = "ep-20260416001057-vxh6w";
+export const DEFAULT_ARK_MODEL_ID = "ep-20260417212516-rpphh";
 
 export function createArkClient() {
   return createOpenAI({
