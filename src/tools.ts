@@ -413,13 +413,13 @@ const generateGuideIntros = tool({
             .string()
             .optional()
             .describe(
-              "用户希望重点介绍的历史时期，可选值：medieval | tudor | stuart | georgian | victorian | edwardian | wwi_wwii | postwar | contemporary | ancient"
+              "用户希望重点介绍的历史时期，如果用户没说就默认为空。可选值：medieval | tudor | stuart | georgian | victorian | edwardian | wwi_wwii | postwar | contemporary | ancient"
             ),
           themes: z
             .array(z.string())
             .optional()
             .describe(
-              "用户希望重点介绍的主题，可选值：royalty | war | religion | science | literature | art | architecture | commerce | politics | nature | sport | mystery | social_history"
+              "用户希望重点介绍的主题，如果用户没说就默认为空。可选值：architecture | history | culture | anecdote"
             ),
         })
       )
