@@ -8,9 +8,9 @@ fishGuide is an AI-powered smart audio tour guide. Users can freely input a list
 
 ## 主要功能 | Main Features
 
-- 🗺️ **自由路线定制**：用户可输入任意多个景点/博物馆，系统自动识别并规划参观顺序。
+- 🗺️ **自由路线定制**：用户可输入任意起讫点，系统自动识别并规划路线，使用谷歌地图展示。
 
-  **Customizable routes**: Input any number of spots/museums, the system will extract and plan your visit order.
+  **Customizable routes**: Input any start/end, the system will extract and plan your visit.
 
 - 🎙️ **个性化语音导览生成**：支持自定义导览风格、时长、深度等，AI 会根据你的要求和维基百科等权威资料自动生成讲解音频。
 
@@ -44,29 +44,16 @@ fishGuide is an AI-powered smart audio tour guide. Users can freely input a list
 
 ---
 
-## 项目结构 | Project Structure
 
-```
-src/
-  app.tsx        # 聊天界面 Chat UI
-  server.ts      # Agent 逻辑 Agent logic
-  tools.ts       # 工具定义 Tool definitions
-  utils.ts       # 辅助函数 Utilities
-  styles.css     # 样式 Styling
-  components/    # UI 组件库 UI components
-```
+## 开发中 | Roadmap
 
----
-
-## 后续开发计划 | Roadmap
-
-- 🗺️ **旅游路线智能规划：目前已支持伦敦地区的citywalk路线规划**
+- 🗺️ **旅游路线智能规划：目前已支持伦敦地区的citywalk路线规划，后续待加入其它地区**
   - 接受历史时期和风格参数，调用RAG，生成最优旅游路线
   - 集成谷歌地图 API，展示沿途路线，支持点击途径点展示位置信息
 
   **Travel route planning**: Integrate Google Maps API for optimal route generation.
 
-- 📚 **基于RAG的讲解词生成：目前已经完成伦敦地区RAG数据库的接入**
+- 📚 **基于RAG的讲解词生成：目前已经完成伦敦地区RAG数据库的接入，后续待加入其它地区**
   - 未来可能支持基于外部知识库的检索增强讲解
 
   **RAG-powered explanations (planned)**: Potential support for retrieval-augmented generation from external knowledge bases.
