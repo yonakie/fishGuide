@@ -156,4 +156,5 @@ dist
 !.dev.vars.example
 !.env.example
 README.md
-.claude/worktrees/dazzling-wright/.claude/settings.local.json
+.claude/worktrees/
+.cursor/rules/
