@@ -191,7 +191,7 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
 export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext) {
     const url = new URL(request.url);
-
+    // 接口1：播放具体音频，路由到R2里的mp3
     if (url.pathname.startsWith("/audio/")) {
       const encodedKey = url.pathname.replace("/audio/", "").trim();
       const objectKey = decodeURIComponent(encodedKey);
@@ -219,14 +219,14 @@ export default {
         headers
       });
     }
-
+    // 接口2：检查有无key，在app.tsx加载时页面挂载时自动走一遍，没key的话就弹窗
     if (url.pathname === "/check-open-ai-key") {
       const hasOpenAIKey = !!process.env.ARK_API_KEY;
       return Response.json({
         success: hasOpenAIKey
       });
     }
-
+    // 接口3：拉音频列表
     if (url.pathname === "/api/audio-list") {
       const browserSessionId = url.searchParams.get("browserSessionId");
       if (!browserSessionId) {
@@ -250,6 +250,7 @@ export default {
         "OPENAI_API_KEY is not set, don't forget to set it locally in .dev.vars, and use `wrangler secret bulk .dev.vars` to upload it to production"
       );
     }
+    // 走websocket路由到agent实例，不是接口，因为需要实时流式返回，长连接。（上面仨接口都是https短连接，这个项目部署在 Cloudflare Workers 上，Cloudflare 自动帮你加了 HTTPS，你不用自己配置）
     return (
       (await routeAgentRequest(request, env)) ||
       new Response("Not found", { status: 404 })
