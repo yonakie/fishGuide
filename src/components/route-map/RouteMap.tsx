@@ -86,7 +86,10 @@ export function RouteMap({ data }: RouteMapProps) {
             path.forEach((p: google.maps.LatLng) => bounds.extend(p));
 
             // ── 共用的 InfoWindow（点击标记时弹出） ─────────────
-            refs.infoWindow = new google.maps.InfoWindow();
+            refs.infoWindow = new google.maps.InfoWindow({
+              // 新版 InfoWindow 默认会有 header 区域，可能造成顶部留白
+              headerDisabled: true,
+            });
 
             // ── 辅助函数：添加一个带 InfoWindow 的标记 ─────────
             function addMarker(
@@ -121,9 +124,7 @@ export function RouteMap({ data }: RouteMapProps) {
             { lat: data.startLat, lng: data.startLon },
             "起",
             "#16a34a",
-            `<div style="font-size:13px;line-height:1.6">
-                <b>🚩 起点</b><br>${data.startName}
-            </div>`,
+            `<div style="font-size:13px;line-height:1.6"><b>🚩 起点</b><br>${data.startName}</div>`,
             );
 
             // ── 途经景点（蓝色，标序号 1、2、3…） ──────────────
@@ -132,11 +133,7 @@ export function RouteMap({ data }: RouteMapProps) {
                 { lat: spot.lat, lng: spot.lon },
                 String(i + 1),
                 "#2563eb",
-                `<div style="font-size:13px;line-height:1.6;max-width:200px">
-                <b>${spot.name_zh}</b><br>
-                <span style="color:#6b7280">${spot.name_en}</span><br>
-                ${spot.highlight_zh ?? ""}
-                </div>`,
+                `<div style="font-size:13px;line-height:1.6;max-width:200px"><b>${spot.name_zh}</b><br><span style="color:#6b7280">${spot.name_en}</span><br>${spot.highlight_zh ?? ""}</div>`,
             );
             });
 
@@ -145,9 +142,7 @@ export function RouteMap({ data }: RouteMapProps) {
             { lat: data.endLat, lng: data.endLon },
             "终",
             "#dc2626",
-            `<div style="font-size:13px;line-height:1.6">
-                <b>🏁 终点</b><br>${data.endName}
-            </div>`,
+            `<div style="font-size:13px;line-height:1.6"><b>🏁 终点</b><br>${data.endName}</div>`,
             );
 
             map.fitBounds(bounds, { top: 50, right: 30, bottom: 30, left: 30 });
