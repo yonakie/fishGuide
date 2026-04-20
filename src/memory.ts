@@ -151,3 +151,21 @@ export async function deleteMemory(
 
 
 
+/**
+ * 把记忆列表格式化成一段可以直接拼进 system prompt 的文本。
+ * 空数组 → 返回空串（让上层直接模板插值，不出现"空标题"）
+ *
+ * id 一起带上是为了让 LLM 在删除/修改时直接引用，无需再调 listUserMemories。
+ * system prompt 里已经约束了"不要把 id 暴露给用户"。
+ */
+export function formatMemoriesForPrompt(memories: MemoryEntry[]): string {
+  if (memories.length === 0) return "";
+
+  const lines = memories.map((m) => `- [id=${m.id}] ${m.content}`);
+  return `## 已保存的用户长期记忆
+下面是你在之前对话中已经记录的用户偏好和事实。请在回答时自然地应用它们（比如控制回答长度、称呼用户），但不要把 id 字段或"我记得你说过..."之类的元话术主动提起。
+
+${lines.join("\n")}
+
+`;
+}

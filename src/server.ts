@@ -26,6 +26,8 @@ import {
   performCompaction
 } from "./compaction";
 
+import { loadMemories, formatMemoriesForPrompt } from "./memory";
+
 console.log("runtime:", navigator.userAgent);
 console.log("process version:", process.version);
 
@@ -122,8 +124,13 @@ export class Chat extends AIChatAgent<Env> {
         }
         // =================================================================
 
+        // ============= Long-term memory: 加载并格式化 =============
+        const memories = await loadMemories(this.ctx.storage);
+        const memoryPrompt = formatMemoriesForPrompt(memories);
+        console.log(`[memory] long-term memories loaded: ${memories.length}`);
+
         const result = streamText({
-          system: `你是一个智能助手。
+          system: `${memoryPrompt}你是一个智能助手。
 当用户需要你帮忙规划伦敦的路线时，调用routePlan工具，输出一个合适的符合要求的参观路线。
 当用户表达"帮我生成从A到B到C的语音解说"等包含"语音"需求的意图且之前没有生成过相关讲解词时，调用 planAudioGuide 工具，并正确提取地点列表。
 当用户表达"帮我生成A地的讲解词"等包含"讲解词"需求的意图时，优先调用 generateGuideIntros 工具。
