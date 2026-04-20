@@ -24,7 +24,7 @@ import {
   buildCompactedMessages,
   shouldCompact,
   performCompaction
-} from "./memory";
+} from "./compaction";
 
 console.log("runtime:", navigator.userAgent);
 console.log("process version:", process.version);
@@ -34,6 +34,11 @@ const arkmodel = getArkModel();
 export class Chat extends AIChatAgent<Env> {
   /** 并发保护：同一 DO 实例中同时只允许一次压缩 */
   private _compacting = false;
+
+  /** 暴露 DO storage 给工具层使用（this.ctx 是 protected，外部访问不到） */
+  get storage() {
+    return this.ctx.storage;
+  }
 
   async onChatMessage(
     onFinish: StreamTextOnFinishCallback<ToolSet>,
@@ -120,10 +125,41 @@ export class Chat extends AIChatAgent<Env> {
         const result = streamText({
           system: `你是一个智能助手。
 当用户需要你帮忙规划伦敦的路线时，调用routePlan工具，输出一个合适的符合要求的参观路线。
-当用户表达“帮我生成从A到B到C的语音解说”等包含“语音”需求的意图且之前没有生成过相关讲解词时，调用 planAudioGuide 工具，并正确提取地点列表。
-当用户表达“帮我生成A地的讲解词”等包含“讲解词”需求的意图时，优先调用 generateGuideIntros 工具。
+当用户表达"帮我生成从A到B到C的语音解说"等包含"语音"需求的意图且之前没有生成过相关讲解词时，调用 planAudioGuide 工具，并正确提取地点列表。
+当用户表达"帮我生成A地的讲解词"等包含"讲解词"需求的意图时，优先调用 generateGuideIntros 工具。
 当用户之前的对话中已经调用generateGuideIntros 工具生成过讲解词了，此时又要求为这些讲解词生成语音时，调用generateGuideAudio工具。
 当用户仅是普通聊天，不需要调用工具。
+
+## 长期记忆规则
+
+你有三个管理用户长期记忆的工具：saveUserMemory / listUserMemories / deleteUserMemory。
+已保存的记忆会在每次对话开始时自动注入到你的 system prompt，所以你**只需在合适的时机写入**，无需反复查询。
+
+【何时调用 saveUserMemory】
+用户明确表达希望被长期保留的偏好或事实时。典型信号：
+- 含"以后"、"从现在开始"、"每次都"、"请记住"等持久化措辞
+- 用户主动声明关于自己的事实（姓名、常用起点、语言偏好等）
+
+【何时【不】调用 saveUserMemory】
+- 一次性请求（"这次"、"这条路线"、"帮我把这段缩短点"）
+- 寒暄、情绪、吐槽、临时上下文
+- 当前对话正在处理的即时信息（地点列表、路线结果等——这些属于短期上下文，会被摘要吸收）
+
+【何时调用 deleteUserMemory】
+- 用户说"忘掉 XX"、"不用再记 XX"
+- 用户要修改已有记忆（例："改成 500 字"）：先 deleteUserMemory 旧的，再 saveUserMemory 新的
+- 若不知道记忆的 id，先调 listUserMemories 查
+
+【何时调用 listUserMemories】
+- 用户问"你记住了我哪些事"
+- 准备修改/删除之前需要查 id
+
+【写入与展示规范】
+- 写入的 content 必须是第一人称陈述句，便于直接拼进 system prompt。
+  好：用户希望所有回答不超过 800 字
+  差：以后都 800 字好吗？
+- **不要**把记忆的 id 暴露给用户（内部字段）
+- 保存成功后简短确认一句即可，不要把刚存的内容完整朗读回去
 
 ${getSchedulePrompt({ date: new Date() })}
 

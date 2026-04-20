@@ -28,6 +28,11 @@ import {
   type RouteData,
 } from "./shared";
 
+import {
+  saveMemory,
+  deleteMemory,
+  loadMemories
+} from "./memory";
 
 const guideTextModel = getArkModel();
 
@@ -232,6 +237,112 @@ const getOrCreateAudioAsset = async (
 //     }
 //   }
 // });
+
+// 长期记忆的三个tool
+// ============= 长期记忆工具 =============
+
+const saveUserMemory = tool({
+  description: `当用户明确表达一个希望被【长期保留】的偏好或事实时调用。
+触发信号示例：
+- "以后回答都用 800 字"、"从现在开始用英文回答" → type=preference
+- "我叫 Yusu"、"我的常用起点是 King's Cross" → type=fact
+
+【不要调用】的情况：
+- 一次性请求："这次答短一点"、"这条路线帮我缩短"
+- 寒暄、情绪表达、临时上下文`,
+  inputSchema: z.object({
+    type: z
+      .enum(["preference", "fact"])
+      .describe(
+        "preference=行为偏好（长度/语气/语言等）；fact=用户声明的事实（姓名/常用起点等）"
+      ),
+    content: z
+      .string()
+      .min(1)
+      .describe(
+        "用第一人称陈述句改写，便于直接拼进 system prompt。示例：'用户希望所有回答不超过 800 字'"
+      )
+  }),
+  execute: async ({ type, content }) => {
+    const { agent } = getCurrentAgent<Chat>();
+    if (!agent) throw new Error("Agent context unavailable for saveUserMemory");
+    try {
+      const entry = await saveMemory(agent.storage, { type, content });
+      return {
+        success: true as const,
+        message: `已保存：${entry.content}`,
+        entry: { id: entry.id, type: entry.type, content: entry.content }
+      };
+    } catch (e) {
+      // 上限 / 空 content 等错误会走到这里，让模型看到文字描述自己处理
+      return {
+        success: false as const,
+        message: e instanceof Error ? e.message : String(e)
+      };
+    }
+  }
+});
+
+const listUserMemories = tool({
+  description: `列出当前已保存的所有长期记忆。
+什么时候调用：
+- 用户问"你记住了我哪些事？"
+- 准备删除/修改某条记忆前，需要先查它的 id
+
+【不要频繁调用】：对话开始时，记忆已经通过 system prompt 注入，无需再查。`,
+  inputSchema: z.object({}),
+  execute: async () => {
+    const { agent } = getCurrentAgent<Chat>();
+    if (!agent) throw new Error("Agent context unavailable for listUserMemories");
+    const list = await loadMemories(agent.storage);
+    return {
+      success: true as const,
+      count: list.length,
+      memories: list.map((m) => ({
+        id: m.id,
+        type: m.type,
+        content: m.content,
+        createdAt: m.createdAt
+      }))
+    };
+  }
+});
+
+const deleteUserMemory = tool({
+  description: `删除一条已保存的长期记忆。
+触发信号：
+- "忘掉 XX"、"不用再记 XX 了"
+- 用户要修改已有记忆（例："改成 500 字"）—— 先 delete 旧的，再 saveUserMemory 存新的
+
+如果不知道 id，先调 listUserMemories 查。`,
+  inputSchema: z.object({
+    id: z
+      .string()
+      .min(1)
+      .describe("要删除的记忆 id（从 listUserMemories 返回里取）")
+  }),
+  execute: async ({ id }) => {
+    const { agent } = getCurrentAgent<Chat>();
+    if (!agent) throw new Error("Agent context unavailable for deleteUserMemory");
+    const deleted = await deleteMemory(agent.storage, id);
+    return deleted
+      ? { success: true as const, message: `已删除记忆 ${id}` }
+      : { success: false as const, message: `未找到 id=${id} 的记忆` };
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+// 导览相关
 const routePlan = tool({
   description:
     "根据用户指定的起点和终点，在沿途走廊内搜索符合条件的伦敦地标，" +
@@ -830,7 +941,10 @@ export const tools = {
   routePlan,
   generateGuideIntros,
   generateGuideAudio,
-  planAudioGuide
+  planAudioGuide,
+  saveUserMemory,
+  listUserMemories,
+  deleteUserMemory
 } satisfies ToolSet;
 
 /**
