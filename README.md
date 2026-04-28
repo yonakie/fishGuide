@@ -1,5 +1,6 @@
 # 🐟 fishGuide AI 语音导游
 
+项目已部署，体验链接：https://shrill-voice-c6a7.suyu.workers.dev/
 fishGuide 是我自制的基于 AI 的智能语音导游聊天应用，支持用户以聊天的形式，告诉模型想要的参观路线和导览风格，获取个性化的博物馆/景点讲解体验。
 
 fishGuide is an AI-powered smart audio tour guide. Users can freely input a list of spots/museums they want to visit, specify their preferred tour style, length, and any other requirements. The agent will automatically extract your route spots, reference Wikipedia for introductions, and generate a personalized audio tour in one go.
